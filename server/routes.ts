@@ -1171,6 +1171,303 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // === REPOSITORY MANAGEMENT API (Aniyomi/Komikku Compatible) ===
+
+  // Get all repositories for user
+  app.get("/api/repositories", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      
+      // Mock repository data compatible with Aniyomi/Komikku
+      const mockRepositories = [
+        {
+          id: 'repo1',
+          userId,
+          name: 'Tachiyomi Extensions',
+          baseUrl: 'https://extensions.tachiyomi.org',
+          repositoryUrl: 'https://github.com/tachiyomiorg/tachiyomi-extensions',
+          sourceType: 'manga',
+          language: 'all',
+          version: '1.4.0',
+          isEnabled: true,
+          isNsfw: false,
+          isObsolete: false,
+          priority: 10,
+          installCount: 50000,
+          packageName: 'eu.kanade.tachiyomi.extension',
+          author: 'Tachiyomi Contributors',
+          description: 'Official Tachiyomi extension repository with 300+ manga sources',
+          iconUrl: '/api/placeholder/64/64',
+          websiteUrl: 'https://tachiyomi.org',
+          supportsLatest: true,
+          supportsSearch: true,
+          hasCloudflare: false,
+          lastChecked: new Date().toISOString(),
+          createdAt: new Date(Date.now() - 86400000 * 30).toISOString(),
+        },
+        {
+          id: 'repo2', 
+          userId,
+          name: 'Aniyomi Extensions',
+          baseUrl: 'https://aniyomi.org',
+          repositoryUrl: 'https://github.com/aniyomiorg/aniyomi-extensions',
+          sourceType: 'anime',
+          language: 'all',
+          version: '2.1.0',
+          isEnabled: true,
+          isNsfw: true,
+          isObsolete: false,
+          priority: 9,
+          installCount: 25000,
+          packageName: 'eu.kanade.tachiyomi.animeextension',
+          author: 'Aniyomi Contributors',
+          description: 'Official Aniyomi anime extension repository with 150+ anime sources',
+          iconUrl: '/api/placeholder/64/64',
+          websiteUrl: 'https://aniyomi.org',
+          supportsLatest: true,
+          supportsSearch: true,
+          hasCloudflare: true,
+          lastChecked: new Date().toISOString(),
+          createdAt: new Date(Date.now() - 86400000 * 20).toISOString(),
+        },
+        {
+          id: 'repo3',
+          userId,
+          name: 'Komikku Sources',
+          baseUrl: 'https://komikku.app',
+          repositoryUrl: 'https://gitlab.com/valos/komikku/-/tree/master/data/sources',
+          sourceType: 'manga',
+          language: 'en',
+          version: '1.2.5',
+          isEnabled: true,
+          isNsfw: false,
+          isObsolete: false,
+          priority: 8,
+          installCount: 15000,
+          packageName: 'info.febvre.Komikku.sources',
+          author: 'Valos',
+          description: 'Komikku manga reader built-in sources',
+          iconUrl: '/api/placeholder/64/64',
+          websiteUrl: 'https://komikku.app',
+          supportsLatest: true,
+          supportsSearch: true,
+          hasCloudflare: false,
+          lastChecked: new Date().toISOString(),
+          createdAt: new Date(Date.now() - 86400000 * 15).toISOString(),
+        }
+      ];
+      
+      res.json(mockRepositories);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch repositories" });
+    }
+  });
+
+  // Install/add new repository
+  app.post("/api/repositories", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const { repositoryUrl, name } = req.body;
+      
+      // Mock installation process
+      const newRepository = {
+        id: `repo_${Date.now()}`,
+        userId,
+        name: name || 'New Repository',
+        baseUrl: 'https://example.com',
+        repositoryUrl,
+        sourceType: 'manga',
+        language: 'en',
+        version: '1.0.0',
+        isEnabled: true,
+        isNsfw: false,
+        priority: 5,
+        installCount: 0,
+        author: 'Unknown',
+        description: 'Custom repository',
+        supportsLatest: true,
+        supportsSearch: true,
+        hasCloudflare: false,
+        createdAt: new Date().toISOString(),
+      };
+      
+      res.status(201).json(newRepository);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to install repository" });
+    }
+  });
+
+  // Update repository
+  app.patch("/api/repositories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      // Mock update response
+      const updatedRepository = {
+        id,
+        ...updates,
+        lastChecked: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      
+      res.json(updatedRepository);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update repository" });
+    }
+  });
+
+  // Remove repository
+  app.delete("/api/repositories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to remove repository" });
+    }
+  });
+
+  // Get sources from a repository
+  app.get("/api/repositories/:id/sources", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Mock sources data for repository
+      const mockSources = [
+        {
+          id: 'src1',
+          repositoryId: id,
+          name: 'MangaDex',
+          displayName: 'MangaDex',
+          baseUrl: 'https://mangadex.org',
+          language: 'en',
+          version: '1.2.0',
+          isEnabled: true,
+          isNsfw: false,
+          iconUrl: '/api/placeholder/48/48',
+          supportsLatest: true,
+          supportsSearch: true,
+          supportsGenres: true,
+          supportsFilters: true,
+          packageName: 'eu.kanade.tachiyomi.extension.en.mangadex',
+          className: 'MangaDex',
+        },
+        {
+          id: 'src2',
+          repositoryId: id,
+          name: 'Mangakakalot',
+          displayName: 'Mangakakalot',
+          baseUrl: 'https://mangakakalot.com',
+          language: 'en',
+          version: '1.1.5',
+          isEnabled: true,
+          isNsfw: true,
+          iconUrl: '/api/placeholder/48/48',
+          supportsLatest: true,
+          supportsSearch: true,
+          supportsGenres: false,
+          supportsFilters: true,
+          packageName: 'eu.kanade.tachiyomi.extension.en.mangakakalot',
+          className: 'Mangakakalot',
+        },
+        {
+          id: 'src3',
+          repositoryId: id,
+          name: 'Crunchyroll',
+          displayName: 'Crunchyroll',
+          baseUrl: 'https://crunchyroll.com',
+          language: 'en',
+          version: '2.0.1',
+          isEnabled: true,
+          isNsfw: false,
+          iconUrl: '/api/placeholder/48/48',
+          supportsLatest: true,
+          supportsSearch: true,
+          supportsGenres: true,
+          supportsFilters: true,
+          packageName: 'eu.kanade.tachiyomi.animeextension.en.crunchyroll',
+          className: 'Crunchyroll',
+        }
+      ];
+      
+      res.json(mockSources);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch repository sources" });
+    }
+  });
+
+  // Search across all enabled repositories
+  app.get("/api/repositories/search", async (req, res) => {
+    try {
+      const { query, type = 'manga', nsfw = 'false' } = req.query;
+      
+      // Mock cross-repository search results
+      const mockResults = [
+        {
+          id: 'result1',
+          title: query ? `${query} - Result 1` : 'Popular Manga 1',
+          alternativeTitles: ['Alternative Title 1'],
+          description: 'Mock search result from MangaDex',
+          coverImageUrl: '/api/placeholder/200/280',
+          author: 'Author Name',
+          status: 'ongoing',
+          genres: ['Action', 'Adventure'],
+          rating: 8.5,
+          sourceId: 'src1',
+          sourceName: 'MangaDex',
+          repositoryId: 'repo1',
+          externalUrl: 'https://mangadex.org/title/12345',
+          isNsfw: false,
+        },
+        {
+          id: 'result2',
+          title: query ? `${query} - Result 2` : 'Popular Manga 2',
+          alternativeTitles: ['Alternative Title 2'],
+          description: 'Mock search result from Mangakakalot',
+          coverImageUrl: '/api/placeholder/200/280',
+          author: 'Another Author',
+          status: 'completed',
+          genres: ['Romance', 'Drama'],
+          rating: 7.8,
+          sourceId: 'src2',
+          sourceName: 'Mangakakalot',
+          repositoryId: 'repo1',
+          externalUrl: 'https://mangakakalot.com/manga/example',
+          isNsfw: nsfw === 'true',
+        }
+      ];
+      
+      res.json(mockResults);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to perform repository search" });
+    }
+  });
+
+  // Check for repository updates
+  app.post("/api/repositories/:id/update", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Mock update check result
+      const updateResult = {
+        repositoryId: id,
+        hasUpdates: true,
+        currentVersion: '1.2.0',
+        latestVersion: '1.3.0',
+        updateAvailable: true,
+        changelog: 'Bug fixes and new sources added',
+        sourcesAdded: 5,
+        sourcesUpdated: 12,
+        sourcesRemoved: 1,
+        lastChecked: new Date().toISOString(),
+      };
+      
+      res.json(updateResult);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to check for updates" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

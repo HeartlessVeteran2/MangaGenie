@@ -242,17 +242,78 @@ export type Collection = typeof collections.$inferSelect;
 export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
 export type UserSettings = typeof userSettings.$inferSelect;
 
-// Advanced repository management for sources
+// Enhanced repository management compatible with Aniyomi/Komikku
 export const repositories = pgTable("repositories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
   name: text("name").notNull(),
-  url: text("url").notNull().unique(),
-  type: text("type").notNull(), // "manga", "anime", "mixed"
-  enabled: boolean("enabled").default(true),
-  lastUpdated: timestamp("last_updated").defaultNow(),
-  totalSources: integer("total_sources").default(0),
-  metadata: jsonb("metadata"),
+  baseUrl: text("base_url").notNull(),
+  repositoryUrl: text("repository_url").notNull().unique(), // GitHub/GitLab repo URL
+  sourceType: text("source_type").notNull(), // "manga", "anime", "both"
+  language: text("language").notNull().default("en"),
+  version: text("version").notNull().default("1.0.0"),
+  isEnabled: boolean("is_enabled").default(true),
+  isNsfw: boolean("is_nsfw").default(false),
+  isObsolete: boolean("is_obsolete").default(false), // Mark as deprecated
+  priority: integer("priority").default(0), // Higher number = higher priority
+  lastChecked: timestamp("last_checked"),
+  lastError: text("last_error"),
+  installCount: integer("install_count").default(0), // Track popularity
+  // Aniyomi/Komikku compatible fields
+  packageName: text("package_name"), // com.example.source.mangasource
+  className: text("class_name"), // Main source class name
+  author: text("author"), // Source developer
+  description: text("description"),
+  iconUrl: text("icon_url"),
+  websiteUrl: text("website_url"), // Official website
+  // Technical configuration
+  metadata: jsonb("metadata"), // Additional source-specific data
+  headers: jsonb("headers"), // Custom headers for requests
+  selectors: jsonb("selectors"), // CSS/XPath selectors for scraping
+  filters: jsonb("filters"), // Available filters (genre, status, etc.)
+  searchCapabilities: jsonb("search_capabilities"), // What search features supported
+  rateLimit: integer("rate_limit").default(1000), // ms between requests
+  maxRetries: integer("max_retries").default(3),
+  timeout: integer("timeout").default(30000), // request timeout in ms
+  // Authentication and proxy
+  authRequired: boolean("auth_required").default(false),
+  authData: jsonb("auth_data"), // Encrypted auth tokens/credentials
+  proxySettings: jsonb("proxy_settings"), // Proxy configuration if needed
+  // Advanced features
+  supportsLatest: boolean("supports_latest").default(true),
+  supportsSearch: boolean("supports_search").default(true),
+  hasCloudflare: boolean("has_cloudflare").default(false),
+  customCode: text("custom_code"), // Custom JavaScript code for parsing
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Repository source extensions (individual sources within a repository)
+export const repositorySources = pgTable("repository_sources", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  repositoryId: varchar("repository_id").notNull().references(() => repositories.id),
+  name: text("name").notNull(),
+  displayName: text("display_name").notNull(),
+  baseUrl: text("base_url").notNull(),
+  language: text("language").notNull(),
+  version: text("version").notNull(),
+  isEnabled: boolean("is_enabled").default(true),
+  isNsfw: boolean("is_nsfw").default(false),
+  iconUrl: text("icon_url"),
+  // Source capabilities
+  supportsLatest: boolean("supports_latest").default(true),
+  supportsSearch: boolean("supports_search").default(true),
+  supportsGenres: boolean("supports_genres").default(false),
+  supportsFilters: boolean("supports_filters").default(false),
+  // Technical details
+  className: text("class_name"),
+  packageName: text("package_name"),
+  metadata: jsonb("metadata"),
+  filters: jsonb("filters"),
+  headers: jsonb("headers"),
+  selectors: jsonb("selectors"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Skip detection for anime episodes
@@ -378,10 +439,17 @@ export const comments = pgTable("comments", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Schema exports for new tables
+// Schema exports for repository tables
 export const insertRepositorySchema = createInsertSchema(repositories).omit({
   id: true,
   createdAt: true,
+  updatedAt: true,
+});
+
+export const insertRepositorySourceSchema = createInsertSchema(repositorySources).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 export const insertSkipMarkerSchema = createInsertSchema(skipMarkers).omit({
@@ -427,9 +495,11 @@ export const insertCommentSchema = createInsertSchema(comments).omit({
   updatedAt: true,
 });
 
-// Type exports for new tables
+// Type exports for repository tables
 export type InsertRepository = z.infer<typeof insertRepositorySchema>;
 export type Repository = typeof repositories.$inferSelect;
+export type InsertRepositorySource = z.infer<typeof insertRepositorySourceSchema>;
+export type RepositorySource = typeof repositorySources.$inferSelect;
 export type InsertSkipMarker = z.infer<typeof insertSkipMarkerSchema>;
 export type SkipMarker = typeof skipMarkers.$inferSelect;
 export type InsertReadingBookmark = z.infer<typeof insertReadingBookmarkSchema>;

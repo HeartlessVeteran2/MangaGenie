@@ -12,25 +12,47 @@ import { queryClient } from '@/lib/queryClient';
 
 interface Repository {
   id: string;
+  userId: string;
   name: string;
-  url: string;
-  type: 'manga' | 'anime' | 'mixed';
-  enabled: boolean;
-  lastUpdated: string;
-  totalSources: number;
-  metadata?: any;
-}
-
-interface Source {
-  id: string;
-  name: string;
-  type: 'manga' | 'anime';
   baseUrl: string;
+  repositoryUrl: string;
+  sourceType: 'manga' | 'anime' | 'both';
+  language: string;
+  version: string;
   isEnabled: boolean;
   isNsfw: boolean;
+  isObsolete: boolean;
+  priority: number;
+  installCount: number;
+  packageName: string;
+  author: string;
+  description: string;
+  iconUrl: string;
+  websiteUrl: string;
+  supportsLatest: boolean;
+  supportsSearch: boolean;
+  hasCloudflare: boolean;
+  lastChecked: string;
+  createdAt: string;
+}
+
+interface RepositorySource {
+  id: string;
+  repositoryId: string;
+  name: string;
+  displayName: string;
+  baseUrl: string;
   language: string;
-  version?: string;
-  iconUrl?: string;
+  version: string;
+  isEnabled: boolean;
+  isNsfw: boolean;
+  iconUrl: string;
+  supportsLatest: boolean;
+  supportsSearch: boolean;
+  supportsGenres: boolean;
+  supportsFilters: boolean;
+  className: string;
+  packageName: string;
 }
 
 export default function RepositoriesPage() {
@@ -43,9 +65,10 @@ export default function RepositoriesPage() {
     queryKey: ['/api/repositories'],
   });
 
-  // Fetch sources
-  const { data: sources = [], isLoading: sourcesLoading } = useQuery<Source[]>({
+  // Fetch all sources from all repositories
+  const { data: allSources = [], isLoading: sourcesLoading } = useQuery<RepositorySource[]>({
     queryKey: ['/api/sources'],
+    enabled: false, // We'll fetch sources per repository instead
   });
 
   // Add repository mutation
@@ -57,7 +80,7 @@ export default function RepositoriesPage() {
           'Content-Type': 'application/json',
           'x-user-id': 'demo-user',
         },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ repositoryUrl: url }),
       });
       if (!response.ok) throw new Error('Failed to add repository');
       return response.json();
@@ -143,15 +166,25 @@ export default function RepositoriesPage() {
         return 'bg-blue-500';
       case 'anime':
         return 'bg-purple-500';
-      case 'mixed':
+      case 'both':
         return 'bg-green-500';
       default:
         return 'bg-gray-500';
     }
   };
 
-  const mangaSources = sources.filter(s => s.type === 'manga');
-  const animeSources = sources.filter(s => s.type === 'anime');
+  const formatInstallCount = (count: number) => {
+    if (count >= 1000000) {
+      return `${(count / 1000000).toFixed(1)}M`;
+    }
+    if (count >= 1000) {
+      return `${(count / 1000).toFixed(1)}K`;
+    }
+    return count.toString();
+  };
+
+  const mangaSources = allSources.filter(s => repositories.find(r => r.id === s.repositoryId)?.sourceType === 'manga');
+  const animeSources = allSources.filter(s => repositories.find(r => r.id === s.repositoryId)?.sourceType === 'anime');
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -231,41 +264,67 @@ export default function RepositoriesPage() {
                 <Card key={repo.id} className="p-6">
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-4 flex-1">
-                      <div className={`p-2 rounded-lg ${getTypeColor(repo.type)}`}>
-                        {getTypeIcon(repo.type)}
-                      </div>
+                      <img 
+                        src={repo.iconUrl} 
+                        alt={repo.name}
+                        className="w-12 h-12 rounded-lg object-cover bg-muted"
+                      />
                       
                       <div className="flex-1 space-y-2">
                         <div className="flex items-center gap-3">
                           <h3 className="text-lg font-medium">{repo.name}</h3>
                           <Badge variant="outline" className="text-xs">
-                            {repo.type.toUpperCase()}
+                            {repo.sourceType.toUpperCase()}
                           </Badge>
-                          {repo.enabled && (
+                          {repo.isEnabled && (
                             <Badge variant="default" className="text-xs">
                               Active
                             </Badge>
                           )}
+                          {repo.isNsfw && (
+                            <Badge variant="destructive" className="text-xs">
+                              <Shield className="w-3 h-3 mr-1" />
+                              NSFW
+                            </Badge>
+                          )}
+                          {repo.hasCloudflare && (
+                            <Badge variant="secondary" className="text-xs">
+                              CloudFlare
+                            </Badge>
+                          )}
                         </div>
                         
-                        <p className="text-sm text-muted-foreground">{repo.url}</p>
+                        <p className="text-sm text-muted-foreground">{repo.description}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{repo.repositoryUrl}</p>
                         
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <div className="flex items-center gap-1">
-                            <Database className="w-3 h-3" />
-                            <span>{repo.totalSources} sources</span>
+                            <Download className="w-3 h-3" />
+                            <span>{formatInstallCount(repo.installCount)} installs</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span>v{repo.version}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span>by {repo.author}</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            <span>Updated {new Date(repo.lastUpdated).toLocaleDateString()}</span>
+                            <span>Updated {new Date(repo.lastChecked).toLocaleDateString()}</span>
                           </div>
                         </div>
+
+                        {repo.isObsolete && (
+                          <div className="p-2 bg-yellow-100 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 text-xs rounded">
+                            ⚠️ This repository is marked as obsolete and may be removed in the future.
+                          </div>
+                        )}
                       </div>
                     </div>
                     
                     <div className="flex items-center gap-3">
                       <Switch
-                        checked={repo.enabled}
+                        checked={repo.isEnabled}
                         onCheckedChange={(checked) =>
                           toggleRepository.mutate({ id: repo.id, enabled: checked })
                         }
