@@ -2,7 +2,9 @@
 
 ## Overview
 
-MangaAI is a modern web application that enables users to read manga with real-time AI-powered translation. The platform combines OCR (Optical Character Recognition) technology with OpenAI's translation services to automatically detect and translate text in manga images from various Asian languages to English. Users can upload manga chapters, organize their reading library, and enjoy seamless reading experiences with overlaid translations.
+MangaAI is a comprehensive manga reader and anime streaming application that surpasses Komikku and Aniyomi with modern UI combining Gemini, Android 16, and Comick layouts. The platform features AI-powered OCR translation, repository management compatible with Aniyomi/Komikku sources, NSFW content support, advanced streaming capabilities, and comprehensive user management.
+
+**Current Status: Transitioning from web application to Android app while maintaining full feature parity and repository compatibility.**
 
 ## User Preferences
 
@@ -10,7 +12,15 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
+### Android App Architecture (Primary)
+- **Framework**: React Native 0.72+ with TypeScript for cross-platform mobile development
+- **Navigation**: React Navigation with bottom tab and stack navigation for mobile-optimized UX
+- **UI Framework**: Material Design 3 components following Android 16 design guidelines
+- **State Management**: React Context API with AsyncStorage for local persistence
+- **Repository Compatibility**: Full Aniyomi and Komikku source repository support
+- **Native Features**: Android-specific OCR, video playback, file management, and background services
+
+### Web Application (Legacy/Fallback)
 - **Framework**: React 18 with TypeScript in a modern single-page application
 - **Routing**: Wouter for lightweight client-side routing with pages for home, library, and reader
 - **UI Framework**: Shadcn/ui components built on Radix UI primitives with Tailwind CSS for styling
