@@ -252,41 +252,6 @@ export const repositories = pgTable("repositories", {
   lastUpdated: timestamp("last_updated").defaultNow(),
   totalSources: integer("total_sources").default(0),
   metadata: jsonb("metadata"),
-  // Google Cloud integration
-  cloudStorageBucket: varchar("cloud_storage_bucket", { length: 255 }),
-  driveFolder: varchar("drive_folder", { length: 255 }),
-  permissions: jsonb("permissions"), // Store permission settings
-  syncEnabled: boolean("sync_enabled").default(false),
-  lastSyncAt: timestamp("last_sync_at"),
-  userId: varchar("user_id").references(() => users.id),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-// Google Cloud permissions and access control
-export const cloudPermissions = pgTable("cloud_permissions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id),
-  repositoryId: varchar("repository_id").references(() => repositories.id),
-  serviceType: varchar("service_type", { length: 50 }).notNull(), // drive, storage, vision, translate
-  accessToken: text("access_token"),
-  refreshToken: text("refresh_token"),
-  expiresAt: timestamp("expires_at"),
-  scopes: text("scopes").array(),
-  isActive: boolean("is_active").default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// Drive sync mappings for repository content
-export const driveSyncMappings = pgTable("drive_sync_mappings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  repositoryId: varchar("repository_id").notNull().references(() => repositories.id),
-  driveFileId: varchar("drive_file_id").notNull(),
-  localPath: varchar("local_path", { length: 500 }),
-  contentType: varchar("content_type", { length: 100 }), // manga, anime, metadata
-  lastModified: timestamp("last_modified"),
-  syncStatus: varchar("sync_status", { length: 50 }).default('pending'), // pending, synced, error
-  errorMessage: text("error_message"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -419,17 +384,6 @@ export const insertRepositorySchema = createInsertSchema(repositories).omit({
   createdAt: true,
 });
 
-export const insertCloudPermissionSchema = createInsertSchema(cloudPermissions).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertDriveSyncMappingSchema = createInsertSchema(driveSyncMappings).omit({
-  id: true,
-  createdAt: true,
-});
-
 export const insertSkipMarkerSchema = createInsertSchema(skipMarkers).omit({
   id: true,
   createdAt: true,
@@ -476,10 +430,6 @@ export const insertCommentSchema = createInsertSchema(comments).omit({
 // Type exports for new tables
 export type InsertRepository = z.infer<typeof insertRepositorySchema>;
 export type Repository = typeof repositories.$inferSelect;
-export type InsertCloudPermission = z.infer<typeof insertCloudPermissionSchema>;
-export type CloudPermission = typeof cloudPermissions.$inferSelect;
-export type InsertDriveSyncMapping = z.infer<typeof insertDriveSyncMappingSchema>;
-export type DriveSyncMapping = typeof driveSyncMappings.$inferSelect;
 export type InsertSkipMarker = z.infer<typeof insertSkipMarkerSchema>;
 export type SkipMarker = typeof skipMarkers.$inferSelect;
 export type InsertReadingBookmark = z.infer<typeof insertReadingBookmarkSchema>;
