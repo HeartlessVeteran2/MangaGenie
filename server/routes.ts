@@ -4,6 +4,7 @@ import multer from "multer";
 import path from "path";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { googleCloudService } from "./services/googleCloudService";
 import { ocrService } from "./services/ocrService";
 import { translationService } from "./services/translationService";
 import { 
