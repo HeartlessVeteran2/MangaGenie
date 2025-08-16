@@ -13,7 +13,16 @@ import {
   insertPageSchema, 
   insertSourceSchema,
   insertCollectionSchema,
-  insertUserSettingsSchema 
+  insertUserSettingsSchema,
+  insertRepositorySchema,
+  insertSkipMarkerSchema,
+  insertReadingBookmarkSchema,
+  insertSyncServiceSchema,
+  insertSyncMappingSchema,
+  insertGalleryPresetSchema,
+  insertPlayerStateSchema,
+  insertDownloadSchema,
+  insertCommentSchema
 } from "@shared/schema";
 import { animeService } from "./services/animeService";
 import { colorExtractionService } from "./services/colorExtractionService";
@@ -569,6 +578,376 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Batch upload error:', error);
       res.status(500).json({ error: "Failed to upload files" });
+    }
+  });
+
+  // === ADVANCED FEATURES: REPOSITORY MANAGEMENT ===
+  
+  // Get all repositories with filtering
+  app.get("/api/repositories", async (req, res) => {
+    try {
+      const type = req.query.type as 'manga' | 'anime' | 'mixed' | undefined;
+      const repositories = await storage.getRepositories(type);
+      res.json(repositories);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch repositories" });
+    }
+  });
+
+  // Add new repository
+  app.post("/api/repositories", async (req, res) => {
+    try {
+      const validatedData = insertRepositorySchema.parse(req.body);
+      const repository = await storage.createRepository(validatedData);
+      res.status(201).json(repository);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to create repository" });
+    }
+  });
+
+  // Update repository
+  app.patch("/api/repositories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const repository = await storage.updateRepository(id, req.body);
+      if (!repository) {
+        return res.status(404).json({ error: "Repository not found" });
+      }
+      res.json(repository);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update repository" });
+    }
+  });
+
+  // Delete repository
+  app.delete("/api/repositories/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteRepository(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Repository not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete repository" });
+    }
+  });
+
+  // === ADVANCED FEATURES: SKIP DETECTION (VLC-LIKE) ===
+  
+  // Get skip markers for episode
+  app.get("/api/episodes/:episodeId/skip-markers", async (req, res) => {
+    try {
+      const { episodeId } = req.params;
+      const markers = await storage.getSkipMarkersByEpisodeId(episodeId);
+      res.json(markers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch skip markers" });
+    }
+  });
+
+  // Create skip marker (auto-detected or manual)
+  app.post("/api/skip-markers", async (req, res) => {
+    try {
+      const validatedData = insertSkipMarkerSchema.parse(req.body);
+      const marker = await storage.createSkipMarker(validatedData);
+      res.status(201).json(marker);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to create skip marker" });
+    }
+  });
+
+  // Vote on skip marker accuracy
+  app.patch("/api/skip-markers/:id/vote", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { vote } = req.body; // 1 for upvote, -1 for downvote
+      
+      const existing = await storage.getSkipMarkerById?.(id);
+      if (!existing) {
+        return res.status(404).json({ error: "Skip marker not found" });
+      }
+
+      const updatedVotes = (existing.votes || 0) + vote;
+      const marker = await storage.updateSkipMarker(id, { votes: updatedVotes });
+      res.json(marker);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to vote on skip marker" });
+    }
+  });
+
+  // === ADVANCED FEATURES: GALLERY AND READING SYSTEM ===
+  
+  // Get reading bookmarks for user
+  app.get("/api/reading/bookmarks", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const bookmarks = await storage.getReadingBookmarksByUserId(userId);
+      res.json(bookmarks);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch reading bookmarks" });
+    }
+  });
+
+  // Create/Update reading bookmark
+  app.post("/api/reading/bookmarks", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const validatedData = insertReadingBookmarkSchema.parse({
+        ...req.body,
+        userId
+      });
+
+      // Check if bookmark already exists for this chapter
+      const existing = await storage.getReadingBookmarkByChapter(userId, validatedData.chapterId);
+      
+      if (existing) {
+        const updated = await storage.updateReadingBookmark(existing.id, validatedData);
+        res.json(updated);
+      } else {
+        const bookmark = await storage.createReadingBookmark(validatedData);
+        res.status(201).json(bookmark);
+      }
+    } catch (error) {
+      res.status(400).json({ error: "Failed to save reading bookmark" });
+    }
+  });
+
+  // Gallery presets management
+  app.get("/api/gallery/presets", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const presets = await storage.getGalleryPresetsByUserId(userId);
+      res.json(presets);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch gallery presets" });
+    }
+  });
+
+  app.post("/api/gallery/presets", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const validatedData = insertGalleryPresetSchema.parse({
+        ...req.body,
+        userId
+      });
+      const preset = await storage.createGalleryPreset(validatedData);
+      res.status(201).json(preset);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to create gallery preset" });
+    }
+  });
+
+  // === ADVANCED FEATURES: VLC-LIKE PLAYER CONTROLS ===
+  
+  // Get/Update player state for episode
+  app.get("/api/player/:episodeId/state", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const { episodeId } = req.params;
+      const state = await storage.getPlayerState(userId, episodeId);
+      res.json(state || {});
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch player state" });
+    }
+  });
+
+  app.post("/api/player/:episodeId/state", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const { episodeId } = req.params;
+      
+      const state = await storage.updatePlayerState(userId, episodeId, req.body);
+      res.json(state);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update player state" });
+    }
+  });
+
+  // === ADVANCED FEATURES: SYNC SERVICES ===
+  
+  // Get user's sync services
+  app.get("/api/sync/services", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const services = await storage.getSyncServicesByUserId(userId);
+      // Remove sensitive tokens from response
+      const sanitized = services.map(service => ({
+        ...service,
+        accessToken: service.accessToken ? '[REDACTED]' : null,
+        refreshToken: service.refreshToken ? '[REDACTED]' : null
+      }));
+      res.json(sanitized);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch sync services" });
+    }
+  });
+
+  // Add sync service (MAL, AniList, etc.)
+  app.post("/api/sync/services", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const validatedData = insertSyncServiceSchema.parse({
+        ...req.body,
+        userId
+      });
+      const service = await storage.createSyncService(validatedData);
+      res.status(201).json(service);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to create sync service" });
+    }
+  });
+
+  // Update sync service
+  app.patch("/api/sync/services/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const service = await storage.updateSyncService(id, req.body);
+      if (!service) {
+        return res.status(404).json({ error: "Sync service not found" });
+      }
+      res.json(service);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update sync service" });
+    }
+  });
+
+  // Sync media with external service
+  app.post("/api/sync/:serviceId/media/:mediaId", async (req, res) => {
+    try {
+      const { serviceId, mediaId } = req.params;
+      const { externalId } = req.body;
+      
+      const mapping = await storage.createSyncMapping({
+        mediaId,
+        syncServiceId: serviceId,
+        externalId
+      });
+      
+      res.status(201).json(mapping);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to create sync mapping" });
+    }
+  });
+
+  // === ADVANCED FEATURES: DOWNLOAD MANAGEMENT ===
+  
+  // Get user's downloads
+  app.get("/api/downloads", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const downloads = await storage.getDownloadsByUserId(userId);
+      res.json(downloads);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch downloads" });
+    }
+  });
+
+  // Start download
+  app.post("/api/downloads", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const validatedData = insertDownloadSchema.parse({
+        ...req.body,
+        userId
+      });
+      const download = await storage.createDownload(validatedData);
+      res.status(201).json(download);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to start download" });
+    }
+  });
+
+  // Update download progress
+  app.patch("/api/downloads/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const download = await storage.updateDownload(id, req.body);
+      if (!download) {
+        return res.status(404).json({ error: "Download not found" });
+      }
+      res.json(download);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update download" });
+    }
+  });
+
+  // Cancel download
+  app.delete("/api/downloads/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteDownload(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Download not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to cancel download" });
+    }
+  });
+
+  // === ADVANCED FEATURES: COMMENTS AND COMMUNITY ===
+  
+  // Get comments for media/chapter/episode
+  app.get("/api/comments", async (req, res) => {
+    try {
+      const { mediaId, chapterId, episodeId } = req.query;
+      
+      let comments = [];
+      if (mediaId) {
+        comments = await storage.getCommentsByMediaId(mediaId as string);
+      } else if (chapterId) {
+        comments = await storage.getCommentsByChapterId(chapterId as string);
+      } else if (episodeId) {
+        comments = await storage.getCommentsByEpisodeId(episodeId as string);
+      }
+      
+      res.json(comments);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch comments" });
+    }
+  });
+
+  // Create comment
+  app.post("/api/comments", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const validatedData = insertCommentSchema.parse({
+        ...req.body,
+        userId
+      });
+      const comment = await storage.createComment(validatedData);
+      res.status(201).json(comment);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to create comment" });
+    }
+  });
+
+  // Update comment
+  app.patch("/api/comments/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const comment = await storage.updateComment(id, req.body);
+      if (!comment) {
+        return res.status(404).json({ error: "Comment not found" });
+      }
+      res.json(comment);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update comment" });
+    }
+  });
+
+  // Delete comment
+  app.delete("/api/comments/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteComment(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Comment not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete comment" });
     }
   });
 

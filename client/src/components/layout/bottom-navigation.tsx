@@ -1,6 +1,6 @@
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Home, BookOpen, Play, Settings } from 'lucide-react';
+import { Home, BookOpen, Play, Database, Download } from 'lucide-react';
 
 export default function BottomNavigation() {
   const [location, setLocation] = useLocation();
@@ -9,7 +9,8 @@ export default function BottomNavigation() {
     { id: 'home', path: '/', icon: Home, label: 'Home' },
     { id: 'library', path: '/library', icon: BookOpen, label: 'Library' },
     { id: 'anime', path: '/anime', icon: Play, label: 'Anime' },
-    { id: 'settings', path: '/settings', icon: Settings, label: 'Settings' },
+    { id: 'repositories', path: '/repositories', icon: Database, label: 'Sources' },
+    { id: 'downloads', path: '/downloads', icon: Download, label: 'Downloads' },
   ];
 
   return (

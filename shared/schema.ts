@@ -225,3 +225,208 @@ export type InsertCollection = z.infer<typeof insertCollectionSchema>;
 export type Collection = typeof collections.$inferSelect;
 export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
 export type UserSettings = typeof userSettings.$inferSelect;
+
+// Advanced repository management for sources
+export const repositories = pgTable("repositories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  url: text("url").notNull().unique(),
+  type: text("type").notNull(), // "manga", "anime", "mixed"
+  enabled: boolean("enabled").default(true),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  totalSources: integer("total_sources").default(0),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Skip detection for anime episodes
+export const skipMarkers = pgTable("skip_markers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  episodeId: varchar("episode_id").notNull().references(() => episodes.id),
+  type: text("type").notNull(), // "opening", "ending", "recap", "preview"
+  startTime: integer("start_time").notNull(), // seconds
+  endTime: integer("end_time").notNull(), // seconds
+  confidence: integer("confidence").default(95), // AI confidence %
+  source: text("source").default("auto"), // auto, manual, community
+  votes: integer("votes").default(0), // community votes
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Reading bookmarks and positions for gallery mode
+export const readingBookmarks = pgTable("reading_bookmarks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  chapterId: varchar("chapter_id").notNull().references(() => chapters.id),
+  pageNumber: integer("page_number").notNull(),
+  scrollPosition: integer("scroll_position").default(0),
+  zoomLevel: integer("zoom_level").default(100),
+  readingMode: text("reading_mode").default("single"), // single, continuous, gallery
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// External sync services integration
+export const syncServices = pgTable("sync_services", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  serviceName: text("service_name").notNull(), // mal, anilist, kitsu, mangaupdates
+  serviceUserId: text("service_user_id"),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  expiresAt: timestamp("expires_at"),
+  isEnabled: boolean("is_enabled").default(true),
+  lastSyncAt: timestamp("last_sync_at"),
+  syncSettings: jsonb("sync_settings"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Media sync mapping for external services
+export const syncMappings = pgTable("sync_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  mediaId: varchar("media_id").notNull().references(() => media.id),
+  syncServiceId: varchar("sync_service_id").notNull().references(() => syncServices.id),
+  externalId: text("external_id").notNull(),
+  externalUrl: text("external_url"),
+  lastSyncedAt: timestamp("last_synced_at").defaultNow(),
+  syncStatus: text("sync_status").default("active"), // active, error, disabled
+});
+
+// Advanced gallery and preview system
+export const galleryPresets = pgTable("gallery_presets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  name: text("name").notNull(),
+  layoutType: text("layout_type").notNull(), // grid, masonry, carousel, strip
+  columnsPerRow: integer("columns_per_row").default(3),
+  showTitles: boolean("show_titles").default(true),
+  showProgress: boolean("show_progress").default(true),
+  sortBy: text("sort_by").default("dateAdded"), // dateAdded, title, progress, rating
+  filterSettings: jsonb("filter_settings"),
+  isDefault: boolean("is_default").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Video player state and advanced controls
+export const playerStates = pgTable("player_states", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  episodeId: varchar("episode_id").notNull().references(() => episodes.id),
+  currentTime: integer("current_time").default(0),
+  duration: integer("duration").default(0),
+  playbackRate: integer("playback_rate").default(100), // percentage
+  volume: integer("volume").default(80),
+  subtitleTrack: text("subtitle_track"),
+  audioTrack: text("audio_track"),
+  quality: text("quality").default("auto"),
+  aspectRatio: text("aspect_ratio").default("16:9"),
+  lastPosition: integer("last_position").default(0),
+  watchedSegments: jsonb("watched_segments"), // Array of [start, end] segments
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Download management for offline reading/watching
+export const downloads = pgTable("downloads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  mediaId: varchar("media_id").notNull().references(() => media.id),
+  chapterId: varchar("chapter_id").references(() => chapters.id),
+  episodeId: varchar("episode_id").references(() => episodes.id),
+  status: text("status").default("pending"), // pending, downloading, completed, error, paused
+  progress: integer("progress").default(0),
+  totalSize: integer("total_size"),
+  downloadedSize: integer("downloaded_size").default(0),
+  quality: text("quality"),
+  localPath: text("local_path"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Comments and community features
+export const comments = pgTable("comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  mediaId: varchar("media_id").notNull().references(() => media.id),
+  chapterId: varchar("chapter_id").references(() => chapters.id),
+  episodeId: varchar("episode_id").references(() => episodes.id),
+  pageNumber: integer("page_number"),
+  timestamp: integer("timestamp"), // for video comments
+  content: text("content").notNull(),
+  parentId: varchar("parent_id"), // for replies - removed self reference for now
+  likes: integer("likes").default(0),
+  dislikes: integer("dislikes").default(0),
+  isEdited: boolean("is_edited").default(false),
+  isDeleted: boolean("is_deleted").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Schema exports for new tables
+export const insertRepositorySchema = createInsertSchema(repositories).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSkipMarkerSchema = createInsertSchema(skipMarkers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertReadingBookmarkSchema = createInsertSchema(readingBookmarks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSyncServiceSchema = createInsertSchema(syncServices).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertSyncMappingSchema = createInsertSchema(syncMappings).omit({
+  id: true,
+  lastSyncedAt: true,
+});
+
+export const insertGalleryPresetSchema = createInsertSchema(galleryPresets).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPlayerStateSchema = createInsertSchema(playerStates).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export const insertDownloadSchema = createInsertSchema(downloads).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCommentSchema = createInsertSchema(comments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Type exports for new tables
+export type InsertRepository = z.infer<typeof insertRepositorySchema>;
+export type Repository = typeof repositories.$inferSelect;
+export type InsertSkipMarker = z.infer<typeof insertSkipMarkerSchema>;
+export type SkipMarker = typeof skipMarkers.$inferSelect;
+export type InsertReadingBookmark = z.infer<typeof insertReadingBookmarkSchema>;
+export type ReadingBookmark = typeof readingBookmarks.$inferSelect;
+export type InsertSyncService = z.infer<typeof insertSyncServiceSchema>;
+export type SyncService = typeof syncServices.$inferSelect;
+export type InsertSyncMapping = z.infer<typeof insertSyncMappingSchema>;
+export type SyncMapping = typeof syncMappings.$inferSelect;
+export type InsertGalleryPreset = z.infer<typeof insertGalleryPresetSchema>;
+export type GalleryPreset = typeof galleryPresets.$inferSelect;
+export type InsertPlayerState = z.infer<typeof insertPlayerStateSchema>;
+export type PlayerState = typeof playerStates.$inferSelect;
+export type InsertDownload = z.infer<typeof insertDownloadSchema>;
+export type Download = typeof downloads.$inferSelect;
+export type InsertComment = z.infer<typeof insertCommentSchema>;
+export type Comment = typeof comments.$inferSelect;
