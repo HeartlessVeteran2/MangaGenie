@@ -12,6 +12,7 @@ import AnimePage from "@/pages/anime";
 import RepositoriesPage from "@/pages/repositories";
 import SyncPage from "@/pages/sync";
 import DownloadsPage from "@/pages/downloads";
+import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 import Landing from "@/components/auth/landing";
 import BottomNavigation from "@/components/layout/bottom-navigation";
@@ -33,6 +34,7 @@ function Router() {
           <Route path="/repositories" component={RepositoriesPage} />
           <Route path="/sync" component={SyncPage} />
           <Route path="/downloads" component={DownloadsPage} />
+          <Route path="/settings" component={SettingsPage} />
         </>
       )}
       <Route component={NotFound} />

@@ -36,6 +36,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import SyncHistoryContent from '@/components/SyncHistoryContent';
 
 const syncServiceSchema = z.object({
   serviceName: z.enum(['myanimelist', 'anilist', 'kitsu', 'simkl', 'trakt']),
@@ -546,9 +547,7 @@ export default function SyncPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                Sync history feature coming soon. This will show detailed logs of all sync operations.
-              </div>
+              <SyncHistoryContent />
             </CardContent>
           </Card>
         </TabsContent>

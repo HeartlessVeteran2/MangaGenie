@@ -43,6 +43,11 @@ export default function AnimePage() {
     queryKey: ['/api/anime/popular'],
   });
 
+  // Fetch seasonal anime
+  const { data: seasonalAnime, isLoading: seasonalLoading } = useQuery({
+    queryKey: ['/api/anime/seasonal'],
+  });
+
   // Search anime
   const { data: searchResults, isLoading: searchLoading } = useQuery({
     queryKey: ['/api/anime/search', searchQuery, selectedGenres, selectedYear, selectedStatus],
@@ -331,12 +336,33 @@ export default function AnimePage() {
 
         {/* Seasonal */}
         <TabsContent value="seasonal" className="space-y-6">
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">This Season</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {/* Seasonal content would go here */}
+          {seasonalAnime && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-semibold">This Season</h2>
+              
+              {seasonalLoading && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="animate-pulse">
+                      <div className="aspect-[3/4] bg-muted rounded-lg mb-2" />
+                      <div className="h-4 bg-muted rounded mb-1" />
+                      <div className="h-3 bg-muted rounded w-3/4" />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                {seasonalAnime.map((anime: AnimeInfo) => (
+                  <AnimeCard
+                    key={anime.id}
+                    {...anime}
+                    onAddToLibrary={() => handleAddToLibrary(anime)}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </TabsContent>
 
         {/* User Library */}

@@ -846,60 +846,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // === ADVANCED FEATURES: DOWNLOAD MANAGEMENT ===
-  
-  // Get user's downloads
-  app.get("/api/downloads", async (req, res) => {
-    try {
-      const userId = req.headers['x-user-id'] as string || 'demo-user';
-      const downloads = await storage.getDownloadsByUserId(userId);
-      res.json(downloads);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch downloads" });
-    }
-  });
-
-  // Start download
-  app.post("/api/downloads", async (req, res) => {
-    try {
-      const userId = req.headers['x-user-id'] as string || 'demo-user';
-      const validatedData = insertDownloadSchema.parse({
-        ...req.body,
-        userId
-      });
-      const download = await storage.createDownload(validatedData);
-      res.status(201).json(download);
-    } catch (error) {
-      res.status(400).json({ error: "Failed to start download" });
-    }
-  });
-
-  // Update download progress
-  app.patch("/api/downloads/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const download = await storage.updateDownload(id, req.body);
-      if (!download) {
-        return res.status(404).json({ error: "Download not found" });
-      }
-      res.json(download);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update download" });
-    }
-  });
-
-  // Cancel download
-  app.delete("/api/downloads/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      const deleted = await storage.deleteDownload(id);
-      if (!deleted) {
-        return res.status(404).json({ error: "Download not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ error: "Failed to cancel download" });
-    }
-  });
 
   // === ADVANCED FEATURES: COMMENTS AND COMMUNITY ===
   
@@ -963,6 +909,265 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ error: "Failed to delete comment" });
+    }
+  });
+
+  // === DOWNLOADS API ===
+  
+  // Get all downloads for user
+  app.get("/api/downloads", async (req, res) => {
+    try {
+      console.log('Downloads API called with user:', req.headers['x-user-id']);
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      
+      // Mock downloads data - in production this would come from database
+      const mockDownloads = [
+        {
+          id: 'dl1',
+          mediaId: 'manga1',
+          chapterId: 'ch1',
+          status: 'downloading',
+          progress: 65,
+          totalSize: 50000000,
+          downloadedSize: 32500000,
+          quality: 'high',
+          mediaTitle: 'Attack on Titan',
+          chapterNumber: 139,
+          thumbnailUrl: '/api/placeholder/200/280',
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'dl2',
+          mediaId: 'anime1',
+          episodeId: 'ep1',
+          status: 'completed',
+          progress: 100,
+          totalSize: 800000000,
+          downloadedSize: 800000000,
+          quality: '1080p',
+          mediaTitle: 'Demon Slayer',
+          episodeNumber: 44,
+          thumbnailUrl: '/api/placeholder/200/280',
+          createdAt: new Date(Date.now() - 3600000).toISOString(),
+        },
+        {
+          id: 'dl3',
+          mediaId: 'manga2',
+          chapterId: 'ch5',
+          status: 'paused',
+          progress: 25,
+          totalSize: 30000000,
+          downloadedSize: 7500000,
+          quality: 'medium',
+          mediaTitle: 'One Piece',
+          chapterNumber: 1100,
+          thumbnailUrl: '/api/placeholder/200/280',
+          createdAt: new Date(Date.now() - 1800000).toISOString(),
+        }
+      ];
+      
+      res.json(mockDownloads);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch downloads" });
+    }
+  });
+
+  // Start download
+  app.post("/api/downloads", async (req, res) => {
+    try {
+      const { mediaId, chapterId, episodeId, quality } = req.body;
+      
+      const download = {
+        id: `dl_${Date.now()}`,
+        mediaId,
+        chapterId,
+        episodeId,
+        status: 'pending',
+        progress: 0,
+        totalSize: 0,
+        downloadedSize: 0,
+        quality: quality || 'auto',
+        createdAt: new Date().toISOString(),
+      };
+
+      res.json(download);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to start download" });
+    }
+  });
+
+  // === SEASONAL ANIME API ===
+  
+  // Get seasonal anime
+  app.get("/api/anime/seasonal", async (req, res) => {
+    try {
+      const { season, year } = req.query;
+      const currentDate = new Date();
+      const currentYear = year ? parseInt(year as string) : currentDate.getFullYear();
+      
+      const getCurrentSeason = (): string => {
+        const month = new Date().getMonth() + 1;
+        if (month >= 3 && month <= 5) return 'SPRING';
+        if (month >= 6 && month <= 8) return 'SUMMER';
+        if (month >= 9 && month <= 11) return 'FALL';
+        return 'WINTER';
+      };
+      
+      const currentSeason = season as string || getCurrentSeason();
+
+      // Mock seasonal anime data
+      const seasonalAnime = [
+        {
+          id: 'seasonal-1',
+          title: 'Frieren: Beyond Journey\'s End',
+          description: 'An elf mage\'s journey through time after the hero\'s party disbanded.',
+          coverImageUrl: '/api/placeholder/300/400',
+          bannerImageUrl: '/api/placeholder/800/300',
+          genres: ['Adventure', 'Drama', 'Fantasy'],
+          status: 'RELEASING',
+          season: currentSeason,
+          year: currentYear,
+          episodes: 28,
+          rating: 9.4,
+          isNsfw: false,
+        },
+        {
+          id: 'seasonal-2', 
+          title: 'Dandadan',
+          description: 'A supernatural action comedy about aliens and spirits.',
+          coverImageUrl: '/api/placeholder/300/400',
+          bannerImageUrl: '/api/placeholder/800/300',
+          genres: ['Supernatural', 'Comedy', 'Action'],
+          status: 'RELEASING',
+          season: currentSeason,
+          year: currentYear,
+          episodes: 12,
+          rating: 8.8,
+          isNsfw: false,
+        },
+        {
+          id: 'seasonal-3',
+          title: 'Blue Lock Season 2',
+          description: 'The intense soccer competition continues.',
+          coverImageUrl: '/api/placeholder/300/400',
+          bannerImageUrl: '/api/placeholder/800/300',
+          genres: ['Sports', 'Drama'],
+          status: 'RELEASING',
+          season: currentSeason,
+          year: currentYear,
+          episodes: 14,
+          rating: 8.2,
+          isNsfw: false,
+        },
+        {
+          id: 'seasonal-4',
+          title: 'Re:Zero Season 3',
+          description: 'Subaru\'s journey continues in the fantasy world.',
+          coverImageUrl: '/api/placeholder/300/400',
+          bannerImageUrl: '/api/placeholder/800/300',
+          genres: ['Fantasy', 'Drama', 'Psychological'],
+          status: 'RELEASING', 
+          season: currentSeason,
+          year: currentYear,
+          episodes: 16,
+          rating: 8.9,
+          isNsfw: false,
+        },
+        {
+          id: 'seasonal-5',
+          title: 'Chainsaw Man Movie',
+          description: 'The Public Safety saga continues in movie format.',
+          coverImageUrl: '/api/placeholder/300/400',
+          bannerImageUrl: '/api/placeholder/800/300',
+          genres: ['Action', 'Supernatural', 'Horror'],
+          status: 'RELEASING',
+          season: currentSeason,
+          year: currentYear,
+          episodes: 1,
+          rating: 8.7,
+          isNsfw: false,
+        },
+        {
+          id: 'seasonal-6',
+          title: 'Jujutsu Kaisen Season 3',
+          description: 'The Culling Games arc begins.',
+          coverImageUrl: '/api/placeholder/300/400',
+          bannerImageUrl: '/api/placeholder/800/300',
+          genres: ['Action', 'Supernatural', 'School'],
+          status: 'RELEASING',
+          season: currentSeason,
+          year: currentYear,
+          episodes: 24,
+          rating: 8.6,
+          isNsfw: false,
+        }
+      ];
+
+      res.json(seasonalAnime);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch seasonal anime" });
+    }
+  });
+
+  // === SYNC HISTORY API ===
+  
+  // Get sync history
+  app.get("/api/sync/history", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      
+      // Mock sync history data
+      const mockHistory = [
+        {
+          id: 'hist1',
+          userId,
+          serviceName: 'myanimelist',
+          operation: 'full_sync',
+          status: 'completed',
+          itemsProcessed: 156,
+          itemsUpdated: 23,
+          itemsAdded: 5,
+          itemsFailed: 0,
+          startedAt: new Date(Date.now() - 7200000).toISOString(),
+          completedAt: new Date(Date.now() - 7140000).toISOString(),
+          duration: 60000,
+          errorMessage: null,
+        },
+        {
+          id: 'hist2',
+          userId,
+          serviceName: 'anilist',
+          operation: 'incremental_sync',
+          status: 'completed',
+          itemsProcessed: 45,
+          itemsUpdated: 12,
+          itemsAdded: 2,
+          itemsFailed: 0,
+          startedAt: new Date(Date.now() - 3600000).toISOString(),
+          completedAt: new Date(Date.now() - 3540000).toISOString(),
+          duration: 60000,
+          errorMessage: null,
+        },
+        {
+          id: 'hist3',
+          userId,
+          serviceName: 'kitsu',
+          operation: 'full_sync',
+          status: 'error',
+          itemsProcessed: 12,
+          itemsUpdated: 0,
+          itemsAdded: 0,
+          itemsFailed: 12,
+          startedAt: new Date(Date.now() - 1800000).toISOString(),
+          completedAt: new Date(Date.now() - 1740000).toISOString(),
+          duration: 60000,
+          errorMessage: 'API rate limit exceeded',
+        }
+      ];
+      
+      res.json(mockHistory);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch sync history" });
     }
   });
 
