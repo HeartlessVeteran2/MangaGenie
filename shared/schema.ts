@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, jsonb, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, jsonb, timestamp, integer, boolean, decimal } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -10,6 +10,43 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Unified media table for both manga and anime
+export const media = pgTable("media", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  type: text("type").notNull(), // "manga" or "anime"
+  title: text("title").notNull(),
+  alternativeTitles: jsonb("alternative_titles"), // Array of alternative titles
+  description: text("description"),
+  originalLanguage: text("original_language"),
+  targetLanguage: text("target_language").default("en"),
+  status: text("status").notNull().default("reading"), // reading, completed, planned, watching, dropped
+  currentChapter: integer("current_chapter").default(1),
+  currentEpisode: integer("current_episode").default(1),
+  totalChapters: integer("total_chapters"),
+  totalEpisodes: integer("total_episodes"),
+  progress: integer("progress").default(0), // percentage
+  score: decimal("score", { precision: 3, scale: 1 }), // User rating 1-10
+  coverImageUrl: text("cover_image_url"),
+  bannerImageUrl: text("banner_image_url"),
+  genres: jsonb("genres"), // Array of genre strings
+  tags: jsonb("tags"), // Array of tag strings
+  year: integer("year"),
+  season: text("season"), // spring, summer, fall, winter
+  studio: text("studio"), // For anime
+  author: text("author"), // For manga
+  artist: text("artist"), // For manga
+  isAdult: boolean("is_adult").default(false),
+  format: text("format"), // TV, Movie, OVA, Special, Manga, Manhwa, Manhua, etc.
+  source: text("source"), // Manga, Light Novel, Original, etc.
+  externalIds: jsonb("external_ids"), // MAL, AniList, etc. IDs
+  trackingData: jsonb("tracking_data"), // Sync data from tracking services
+  colorPalette: jsonb("color_palette"), // Extracted colors from cover for theming
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Legacy manga table - keeping for backwards compatibility
 export const manga = pgTable("manga", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
@@ -25,13 +62,32 @@ export const manga = pgTable("manga", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Episodes for anime content
+export const episodes = pgTable("episodes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  mediaId: varchar("media_id").notNull().references(() => media.id),
+  episodeNumber: integer("episode_number").notNull(),
+  title: text("title"),
+  description: text("description"),
+  duration: integer("duration"), // in minutes
+  airDate: timestamp("air_date"),
+  videoSources: jsonb("video_sources"), // Array of video sources with qualities
+  subtitles: jsonb("subtitles"), // Subtitle tracks
+  thumbnailUrl: text("thumbnail_url"),
+  watchedAt: timestamp("watched_at"),
+  watchProgress: integer("watch_progress").default(0), // seconds watched
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const chapters = pgTable("chapters", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  mangaId: varchar("manga_id").notNull().references(() => manga.id),
+  mediaId: varchar("media_id").references(() => media.id),
+  mangaId: varchar("manga_id").references(() => manga.id), // Legacy support
   chapterNumber: integer("chapter_number").notNull(),
   title: text("title"),
   totalPages: integer("total_pages").notNull(),
   currentPage: integer("current_page").default(1),
+  readAt: timestamp("read_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -45,25 +101,84 @@ export const pages = pgTable("pages", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Sources and extensions system
+export const sources = pgTable("sources", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // manga, anime
+  baseUrl: text("base_url").notNull(),
+  isEnabled: boolean("is_enabled").default(true),
+  isNsfw: boolean("is_nsfw").default(false),
+  language: text("language").default("en"),
+  version: text("version"),
+  iconUrl: text("icon_url"),
+  config: jsonb("config"), // Source-specific configuration
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// User collections and categories
+export const collections = pgTable("collections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  isPrivate: boolean("is_private").default(false),
+  coverImageUrl: text("cover_image_url"),
+  mediaIds: jsonb("media_ids"), // Array of media IDs
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const userSettings = pgTable("user_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
+  // Reading settings
   ocrSensitivity: integer("ocr_sensitivity").default(7),
   translationQuality: text("translation_quality").default("balanced"), // fast, balanced, premium
   autoTranslate: boolean("auto_translate").default(true),
   showOcrBoundaries: boolean("show_ocr_boundaries").default(false),
   defaultLanguagePair: text("default_language_pair").default("jp-en"),
+  
+  // Player settings
+  videoQuality: text("video_quality").default("auto"), // auto, 1080p, 720p, 480p, 360p
+  autoPlay: boolean("auto_play").default(true),
+  skipIntro: boolean("skip_intro").default(false),
+  skipOutro: boolean("skip_outro").default(false),
+  preferredPlayer: text("preferred_player").default("internal"), // internal, external
+  
+  // UI settings
+  theme: text("theme").default("dark"), // dark, light, auto
+  dynamicColors: boolean("dynamic_colors").default(true),
+  showAdultContent: boolean("show_adult_content").default(false),
+  
+  // Tracking integration
+  malSync: boolean("mal_sync").default(false),
+  anilistSync: boolean("anilist_sync").default(false),
+  malUsername: text("mal_username"),
+  anilistToken: text("anilist_token"),
 });
 
+// Schema exports
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
+});
+
+export const insertMediaSchema = createInsertSchema(media).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 export const insertMangaSchema = createInsertSchema(manga).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+});
+
+export const insertEpisodeSchema = createInsertSchema(episodes).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertChapterSchema = createInsertSchema(chapters).omit({
@@ -76,17 +191,37 @@ export const insertPageSchema = createInsertSchema(pages).omit({
   createdAt: true,
 });
 
+export const insertSourceSchema = createInsertSchema(sources).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCollectionSchema = createInsertSchema(collections).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertUserSettingsSchema = createInsertSchema(userSettings).omit({
   id: true,
 });
 
+// Type exports
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+export type InsertMedia = z.infer<typeof insertMediaSchema>;
+export type Media = typeof media.$inferSelect;
 export type InsertManga = z.infer<typeof insertMangaSchema>;
 export type Manga = typeof manga.$inferSelect;
+export type InsertEpisode = z.infer<typeof insertEpisodeSchema>;
+export type Episode = typeof episodes.$inferSelect;
 export type InsertChapter = z.infer<typeof insertChapterSchema>;
 export type Chapter = typeof chapters.$inferSelect;
 export type InsertPage = z.infer<typeof insertPageSchema>;
 export type Page = typeof pages.$inferSelect;
+export type InsertSource = z.infer<typeof insertSourceSchema>;
+export type Source = typeof sources.$inferSelect;
+export type InsertCollection = z.infer<typeof insertCollectionSchema>;
+export type Collection = typeof collections.$inferSelect;
 export type InsertUserSettings = z.infer<typeof insertUserSettingsSchema>;
 export type UserSettings = typeof userSettings.$inferSelect;

@@ -5,7 +5,18 @@ import path from "path";
 import { storage } from "./storage";
 import { ocrService } from "./services/ocrService";
 import { translationService } from "./services/translationService";
-import { insertMangaSchema, insertChapterSchema, insertPageSchema, insertUserSettingsSchema } from "@shared/schema";
+import { 
+  insertMangaSchema, 
+  insertMediaSchema,
+  insertEpisodeSchema,
+  insertChapterSchema, 
+  insertPageSchema, 
+  insertSourceSchema,
+  insertCollectionSchema,
+  insertUserSettingsSchema 
+} from "@shared/schema";
+import { animeService } from "./services/animeService";
+import { colorExtractionService } from "./services/colorExtractionService";
 
 // Configure multer for file uploads
 const upload = multer({
@@ -28,6 +39,283 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  // === UNIFIED MEDIA API (Manga + Anime) ===
+  
+  // Get user's media library with optional type filtering
+  app.get("/api/media", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const type = req.query.type as 'manga' | 'anime' | undefined;
+      const mediaList = await storage.getMediaByUserId(userId, type);
+      res.json(mediaList);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch media library" });
+    }
+  });
+
+  // Search media library
+  app.get("/api/media/search", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const query = req.query.q as string;
+      if (!query) {
+        return res.status(400).json({ error: "Search query required" });
+      }
+      const results = await storage.searchMedia(query, userId);
+      res.json(results);
+    } catch (error) {
+      res.status(500).json({ error: "Search failed" });
+    }
+  });
+
+  // Create new media entry
+  app.post("/api/media", upload.single('coverImage'), async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      let mediaData = insertMediaSchema.parse({ ...req.body, userId });
+      
+      // Extract colors from cover image if provided
+      if (req.file) {
+        const colors = await colorExtractionService.extractColorsFromImage(req.file.buffer);
+        mediaData = { ...mediaData, colorPalette: colors };
+      } else if (mediaData.coverImageUrl) {
+        const colors = await colorExtractionService.extractColorsFromUrl(mediaData.coverImageUrl);
+        mediaData = { ...mediaData, colorPalette: colors };
+      }
+      
+      const media = await storage.createMedia(mediaData);
+      res.json(media);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid media data" });
+    }
+  });
+
+  // Get specific media item
+  app.get("/api/media/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const media = await storage.getMediaById(id);
+      if (!media) {
+        return res.status(404).json({ error: "Media not found" });
+      }
+      res.json(media);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch media" });
+    }
+  });
+
+  // Update media progress and info
+  app.put("/api/media/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const media = await storage.updateMedia(id, updates);
+      if (!media) {
+        return res.status(404).json({ error: "Media not found" });
+      }
+      res.json(media);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update media" });
+    }
+  });
+
+  // Delete media
+  app.delete("/api/media/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await storage.deleteMedia(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Media not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete media" });
+    }
+  });
+
+  // === ANIME SPECIFIC API ===
+  
+  // Search anime from external sources
+  app.get("/api/anime/search", async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      if (!query) {
+        return res.status(400).json({ error: "Search query required" });
+      }
+      
+      const filters = {
+        genre: req.query.genre ? (req.query.genre as string).split(',') : undefined,
+        year: req.query.year ? parseInt(req.query.year as string) : undefined,
+        status: req.query.status as string,
+        format: req.query.format as string,
+        isAdult: req.query.isAdult === 'true'
+      };
+      
+      const results = await animeService.searchAnime(query, filters);
+      res.json(results);
+    } catch (error) {
+      res.status(500).json({ error: "Anime search failed" });
+    }
+  });
+
+  // Get trending anime
+  app.get("/api/anime/trending", async (req, res) => {
+    try {
+      const trending = await animeService.getTrendingAnime();
+      res.json(trending);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch trending anime" });
+    }
+  });
+
+  // Get popular anime by season/year
+  app.get("/api/anime/popular", async (req, res) => {
+    try {
+      const season = req.query.season as string;
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const popular = await animeService.getPopularAnime(season, year);
+      res.json(popular);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch popular anime" });
+    }
+  });
+
+  // Get anime info by ID
+  app.get("/api/anime/:id/info", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const animeInfo = await animeService.getAnimeInfo(id);
+      if (!animeInfo) {
+        return res.status(404).json({ error: "Anime not found" });
+      }
+      res.json(animeInfo);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch anime info" });
+    }
+  });
+
+  // Get anime episodes
+  app.get("/api/anime/:id/episodes", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const episodes = await animeService.getAnimeEpisodes(id);
+      res.json(episodes);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch episodes" });
+    }
+  });
+
+  // Get video sources for episode
+  app.get("/api/anime/:id/episodes/:episodeNumber/sources", async (req, res) => {
+    try {
+      const { id, episodeNumber } = req.params;
+      const sources = await animeService.getVideoSources(id, parseInt(episodeNumber));
+      res.json(sources);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch video sources" });
+    }
+  });
+
+  // Get subtitles for episode
+  app.get("/api/anime/:id/episodes/:episodeNumber/subtitles", async (req, res) => {
+    try {
+      const { id, episodeNumber } = req.params;
+      const subtitles = await animeService.getSubtitles(id, parseInt(episodeNumber));
+      res.json(subtitles);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch subtitles" });
+    }
+  });
+
+  // === EPISODE MANAGEMENT (for user's anime library) ===
+
+  // Get user's episode progress for a media item
+  app.get("/api/media/:id/episodes", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const episodes = await storage.getEpisodesByMediaId(id);
+      res.json(episodes);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch episodes" });
+    }
+  });
+
+  // Create/update episode progress
+  app.post("/api/media/:id/episodes", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const episodeData = insertEpisodeSchema.parse({ ...req.body, mediaId: id });
+      const episode = await storage.createEpisode(episodeData);
+      res.json(episode);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid episode data" });
+    }
+  });
+
+  // Update episode watch progress
+  app.put("/api/episodes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const episode = await storage.updateEpisode(id, updates);
+      if (!episode) {
+        return res.status(404).json({ error: "Episode not found" });
+      }
+      res.json(episode);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update episode" });
+    }
+  });
+
+  // === SOURCES MANAGEMENT ===
+
+  // Get available sources
+  app.get("/api/sources", async (req, res) => {
+    try {
+      const type = req.query.type as 'manga' | 'anime' | undefined;
+      const sources = await storage.getSources(type);
+      res.json(sources);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch sources" });
+    }
+  });
+
+  // Add new source
+  app.post("/api/sources", async (req, res) => {
+    try {
+      const sourceData = insertSourceSchema.parse(req.body);
+      const source = await storage.createSource(sourceData);
+      res.json(source);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid source data" });
+    }
+  });
+
+  // === COLLECTIONS MANAGEMENT ===
+
+  // Get user collections
+  app.get("/api/collections", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const collections = await storage.getCollectionsByUserId(userId);
+      res.json(collections);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch collections" });
+    }
+  });
+
+  // Create new collection
+  app.post("/api/collections", async (req, res) => {
+    try {
+      const userId = req.headers['x-user-id'] as string || 'demo-user';
+      const collectionData = insertCollectionSchema.parse({ ...req.body, userId });
+      const collection = await storage.createCollection(collectionData);
+      res.json(collection);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid collection data" });
+    }
   });
 
   // Get user's manga library
