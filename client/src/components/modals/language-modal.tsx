@@ -73,7 +73,7 @@ export default function LanguageModal({ open, onOpenChange }: LanguageModalProps
     });
   };
 
-  const currentPair = settings?.defaultLanguagePair || 'jp-en';
+  const currentPair = (settings as any)?.defaultLanguagePair || 'jp-en';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
