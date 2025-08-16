@@ -1,653 +1,455 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { 
-  Download,
-  Pause,
-  Play,
-  Trash2,
-  FolderOpen,
-  HardDriveDownload,
-  CheckCircle,
-  XCircle,
-  Clock,
-  AlertCircle,
-  Film,
-  Book,
-  Archive,
-  FileText,
-  Image,
-  Video,
-  Music,
-  Settings,
-  RefreshCw,
-  BarChart3
-} from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { Download, Pause, Play, Trash2, HardDrive, Wifi, WifiOff } from 'lucide-react';
 
-const downloadSchema = z.object({
-  mediaId: z.string().min(1, 'Media ID is required'),
-  mediaType: z.enum(['anime', 'manga', 'episode', 'chapter']),
-  quality: z.string().default('1080p'),
-  priority: z.enum(['low', 'normal', 'high']).default('normal'),
-  downloadPath: z.string().optional()
-});
-
-type Download = {
+interface DownloadItem {
   id: string;
   mediaId: string;
-  mediaType: 'anime' | 'manga' | 'episode' | 'chapter';
-  title: string;
-  quality: string;
-  fileSize: number;
-  downloadedSize: number;
+  chapterId?: string;
+  episodeId?: string;
+  status: 'pending' | 'downloading' | 'completed' | 'error' | 'paused';
   progress: number;
-  speed: number;
-  eta: string;
-  status: 'pending' | 'downloading' | 'paused' | 'completed' | 'failed' | 'cancelled';
-  priority: 'low' | 'normal' | 'high';
-  downloadPath: string;
-  createdAt: string;
-  startedAt?: string;
-  completedAt?: string;
-  error?: string;
-};
-
-type DownloadStats = {
-  totalDownloads: number;
-  activeDownloads: number;
-  completedDownloads: number;
-  failedDownloads: number;
   totalSize: number;
   downloadedSize: number;
-  avgSpeed: number;
-};
+  quality?: string;
+  localPath?: string;
+  mediaTitle: string;
+  chapterNumber?: number;
+  episodeNumber?: number;
+  thumbnailUrl?: string;
+  createdAt: string;
+}
 
 export default function DownloadsPage() {
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<'all' | Download['status']>('all');
-  const [filterType, setFilterType] = useState<'all' | Download['mediaType']>('all');
   const [activeTab, setActiveTab] = useState('active');
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   // Fetch downloads
-  const { data: downloads = [], isLoading } = useQuery<Download[]>({
+  const { data: downloads = [], isLoading } = useQuery<DownloadItem[]>({
     queryKey: ['/api/downloads'],
-    refetchInterval: 2000 // Refresh every 2 seconds for live progress
   });
 
-  // Fetch download statistics
-  const { data: stats } = useQuery<DownloadStats>({
-    queryKey: ['/api/downloads/stats'],
-    refetchInterval: 5000
-  });
-
-  // Start download mutation
-  const startDownload = useMutation({
-    mutationFn: async (data: z.infer<typeof downloadSchema>) => {
-      const response = await fetch('/api/downloads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/downloads'] });
-      setShowAddDialog(false);
-      toast({
-        title: 'Download Started',
-        description: 'Download has been added to the queue.'
-      });
-    },
-    onError: () => {
-      toast({
-        title: 'Download Failed',
-        description: 'Failed to start download.',
-        variant: 'destructive'
-      });
-    }
-  });
-
-  // Control download mutations
-  const controlDownload = useMutation({
-    mutationFn: async ({ id, action }: { id: string; action: 'pause' | 'resume' | 'cancel' }) => {
-      const response = await fetch(`/api/downloads/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          status: action === 'pause' ? 'paused' : 
-                 action === 'resume' ? 'downloading' : 'cancelled'
-        })
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/downloads'] });
-    }
-  });
-
-  // Delete download mutation
-  const deleteDownload = useMutation({
-    mutationFn: async (id: string) => {
-      await fetch(`/api/downloads/${id}`, { method: 'DELETE' });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/downloads'] });
-      toast({
-        title: 'Download Removed',
-        description: 'Download has been removed from the list.'
-      });
-    }
-  });
-
-  const form = useForm<z.infer<typeof downloadSchema>>({
-    resolver: zodResolver(downloadSchema),
-    defaultValues: {
-      mediaId: '',
-      mediaType: 'anime',
-      quality: '1080p',
-      priority: 'normal'
-    }
-  });
-
-  const onSubmit = (data: z.infer<typeof downloadSchema>) => {
-    startDownload.mutate(data);
-  };
-
-  const filteredDownloads = downloads.filter((download: Download) => {
-    const matchesStatus = filterStatus === 'all' || download.status === filterStatus;
-    const matchesType = filterType === 'all' || download.mediaType === filterType;
-    return matchesStatus && matchesType;
-  });
-
-  const activeDownloads = downloads.filter(d => d.status === 'downloading' || d.status === 'pending');
+  // Filter downloads by status
+  const activeDownloads = downloads.filter(d => 
+    ['pending', 'downloading', 'paused'].includes(d.status)
+  );
   const completedDownloads = downloads.filter(d => d.status === 'completed');
-  const failedDownloads = downloads.filter(d => d.status === 'failed' || d.status === 'cancelled');
-
-  const getStatusIcon = (status: Download['status']) => {
-    switch (status) {
-      case 'completed': return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'failed':
-      case 'cancelled': return <XCircle className="h-4 w-4 text-red-500" />;
-      case 'downloading': return <Download className="h-4 w-4 text-blue-500 animate-pulse" />;
-      case 'paused': return <Pause className="h-4 w-4 text-yellow-500" />;
-      case 'pending': return <Clock className="h-4 w-4 text-gray-500" />;
-      default: return <AlertCircle className="h-4 w-4 text-gray-500" />;
-    }
-  };
-
-  const getMediaIcon = (mediaType: Download['mediaType']) => {
-    switch (mediaType) {
-      case 'anime':
-      case 'episode': return <Film className="h-4 w-4" />;
-      case 'manga':
-      case 'chapter': return <Book className="h-4 w-4" />;
-      default: return <FileText className="h-4 w-4" />;
-    }
-  };
+  const errorDownloads = downloads.filter(d => d.status === 'error');
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const formatSpeed = (bytesPerSecond: number) => {
-    return formatFileSize(bytesPerSecond) + '/s';
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'downloading':
+        return <Download className="w-4 h-4 animate-pulse" />;
+      case 'paused':
+        return <Pause className="w-4 h-4" />;
+      case 'completed':
+        return <Download className="w-4 h-4 text-green-500" />;
+      case 'error':
+        return <Download className="w-4 h-4 text-red-500" />;
+      default:
+        return <Download className="w-4 h-4" />;
+    }
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Download Manager</h1>
-          <p className="text-muted-foreground">Manage your anime and manga downloads</p>
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'downloading':
+        return 'bg-blue-500';
+      case 'paused':
+        return 'bg-orange-500';
+      case 'completed':
+        return 'bg-green-500';
+      case 'error':
+        return 'bg-red-500';
+      case 'pending':
+        return 'bg-gray-500';
+      default:
+        return 'bg-gray-500';
+    }
+  };
+
+  const handlePauseResume = async (id: string, currentStatus: string) => {
+    try {
+      const newStatus = currentStatus === 'downloading' ? 'paused' : 'downloading';
+      const response = await fetch(`/api/downloads/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      
+      if (response.ok) {
+        // Refetch downloads
+        // queryClient.invalidateQueries(['/api/downloads']);
+      }
+    } catch (error) {
+      console.error('Failed to update download:', error);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      const response = await fetch(`/api/downloads/${id}`, {
+        method: 'DELETE',
+      });
+      
+      if (response.ok) {
+        // Refetch downloads
+        // queryClient.invalidateQueries(['/api/downloads']);
+      }
+    } catch (error) {
+      console.error('Failed to delete download:', error);
+    }
+  };
+
+  const totalStorageUsed = completedDownloads.reduce((acc, d) => acc + d.totalSize, 0);
+  const activeDownloadsCount = activeDownloads.length;
+
+  if (isLoading) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto space-y-6">
+        <div className="space-y-4">
+          {[...Array(5)].map((_, i) => (
+            <Card key={i} className="p-6">
+              <div className="animate-pulse space-y-3">
+                <div className="h-4 bg-muted rounded w-1/4"></div>
+                <div className="h-4 bg-muted rounded w-3/4"></div>
+                <div className="h-2 bg-muted rounded"></div>
+              </div>
+            </Card>
+          ))}
         </div>
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Download className="h-4 w-4 mr-2" />
-              New Download
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-                <DialogHeader>
-                  <DialogTitle>Start New Download</DialogTitle>
-                  <DialogDescription>
-                    Add a new item to your download queue.
-                  </DialogDescription>
-                </DialogHeader>
+      </div>
+    );
+  }
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="mediaId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Media ID</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Enter media ID" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="mediaType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Type</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="anime">Anime Series</SelectItem>
-                            <SelectItem value="episode">Single Episode</SelectItem>
-                            <SelectItem value="manga">Manga Series</SelectItem>
-                            <SelectItem value="chapter">Single Chapter</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="quality"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Quality</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="720p">720p</SelectItem>
-                            <SelectItem value="1080p">1080p</SelectItem>
-                            <SelectItem value="1440p">1440p</SelectItem>
-                            <SelectItem value="4K">4K</SelectItem>
-                            <SelectItem value="original">Original</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="priority"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Priority</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="low">Low</SelectItem>
-                            <SelectItem value="normal">Normal</SelectItem>
-                            <SelectItem value="high">High</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="downloadPath"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Download Path (Optional)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="/path/to/downloads" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setShowAddDialog(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={startDownload.isPending}>
-                    {startDownload.isPending ? 'Starting...' : 'Start Download'}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
+  return (
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold">Downloads</h1>
+        <p className="text-muted-foreground">
+          Manage your offline content for reading and watching anywhere
+        </p>
       </div>
 
-      {/* Statistics */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <HardDriveDownload className="h-8 w-8 text-blue-500" />
-                <div className="ml-2">
-                  <p className="text-sm font-medium text-muted-foreground">Total Downloads</p>
-                  <p className="text-2xl font-bold">{stats.totalDownloads}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <Download className="h-8 w-8 text-green-500" />
-                <div className="ml-2">
-                  <p className="text-sm font-medium text-muted-foreground">Active</p>
-                  <p className="text-2xl font-bold">{stats.activeDownloads}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500/20 rounded-lg">
+              <Download className="w-5 h-5 text-blue-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Active Downloads</p>
+              <p className="text-2xl font-bold">{activeDownloadsCount}</p>
+            </div>
+          </div>
+        </Card>
+        
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-green-500/20 rounded-lg">
+              <HardDrive className="w-5 h-5 text-green-500" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Storage Used</p>
+              <p className="text-2xl font-bold">{formatFileSize(totalStorageUsed)}</p>
+            </div>
+          </div>
+        </Card>
+        
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-500/20 rounded-lg">
+              {navigator.onLine ? (
+                <Wifi className="w-5 h-5 text-purple-500" />
+              ) : (
+                <WifiOff className="w-5 h-5 text-gray-500" />
+              )}
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Connection</p>
+              <p className="text-2xl font-bold">
+                {navigator.onLine ? 'Online' : 'Offline'}
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
 
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <CheckCircle className="h-8 w-8 text-green-500" />
-                <div className="ml-2">
-                  <p className="text-sm font-medium text-muted-foreground">Completed</p>
-                  <p className="text-2xl font-bold">{stats.completedDownloads}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <Archive className="h-8 w-8 text-blue-500" />
-                <div className="ml-2">
-                  <p className="text-sm font-medium text-muted-foreground">Total Size</p>
-                  <p className="text-lg font-bold">{formatFileSize(stats.totalSize)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <BarChart3 className="h-8 w-8 text-purple-500" />
-                <div className="ml-2">
-                  <p className="text-sm font-medium text-muted-foreground">Avg Speed</p>
-                  <p className="text-lg font-bold">{formatSpeed(stats.avgSpeed)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="active">Active ({activeDownloads.length})</TabsTrigger>
-          <TabsTrigger value="completed">Completed ({completedDownloads.length})</TabsTrigger>
-          <TabsTrigger value="failed">Failed ({failedDownloads.length})</TabsTrigger>
-          <TabsTrigger value="all">All Downloads</TabsTrigger>
+      {/* Downloads Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="active" className="flex items-center gap-2">
+            Active
+            {activeDownloadsCount > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {activeDownloadsCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="completed" className="flex items-center gap-2">
+            Completed
+            {completedDownloads.length > 0 && (
+              <Badge variant="secondary" className="ml-1">
+                {completedDownloads.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="errors" className="flex items-center gap-2">
+            Errors
+            {errorDownloads.length > 0 && (
+              <Badge variant="destructive" className="ml-1">
+                {errorDownloads.length}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
-        {/* Filters */}
-        <div className="flex items-center gap-4 mt-4">
-          <Select value={filterStatus} onValueChange={setFilterStatus as any}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="downloading">Downloading</SelectItem>
-              <SelectItem value="paused">Paused</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={filterType} onValueChange={setFilterType as any}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="anime">Anime</SelectItem>
-              <SelectItem value="manga">Manga</SelectItem>
-              <SelectItem value="episode">Episodes</SelectItem>
-              <SelectItem value="chapter">Chapters</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <TabsContent value={activeTab} className="space-y-4">
-          {isLoading ? (
-            <div className="space-y-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Card key={i} className="animate-pulse">
-                  <CardContent className="p-6">
-                    <div className="h-4 bg-muted rounded w-3/4 mb-2" />
-                    <div className="h-3 bg-muted rounded w-1/2 mb-2" />
-                    <div className="h-2 bg-muted rounded w-full" />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : filteredDownloads.length === 0 ? (
-            <Card>
-              <CardContent className="text-center py-12">
-                <div className="text-muted-foreground mb-4">
-                  No downloads found. Start your first download to see it here.
-                </div>
-                <Button onClick={() => setShowAddDialog(true)}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Start First Download
-                </Button>
-              </CardContent>
+        {/* Active Downloads */}
+        <TabsContent value="active" className="space-y-4">
+          {activeDownloads.length === 0 ? (
+            <Card className="p-8 text-center">
+              <Download className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-medium mb-2">No active downloads</h3>
+              <p className="text-muted-foreground mb-4">
+                Download content from your library to access it offline
+              </p>
+              <Button variant="outline">Browse Library</Button>
             </Card>
           ) : (
-            <div className="space-y-4">
-              {filteredDownloads.map((download) => (
-                <Card key={download.id} className="group hover:shadow-lg transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-start gap-3">
-                        {getMediaIcon(download.mediaType)}
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg">{download.title}</h3>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Badge variant="outline" className="capitalize">
-                              {download.mediaType}
-                            </Badge>
-                            <Badge variant="outline">
-                              {download.quality}
-                            </Badge>
-                            <Badge 
-                              variant={
-                                download.priority === 'high' ? 'default' :
-                                download.priority === 'low' ? 'secondary' : 'outline'
-                              }
-                              className="capitalize"
-                            >
-                              {download.priority} Priority
-                            </Badge>
-                          </div>
-                        </div>
+            activeDownloads.map((download) => (
+              <Card key={download.id} className="p-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-16 h-20 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
+                    {download.thumbnailUrl ? (
+                      <img
+                        src={download.thumbnailUrl}
+                        alt={download.mediaTitle}
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                    ) : (
+                      <Download className="w-6 h-6 text-muted-foreground" />
+                    )}
+                  </div>
+                  
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-medium">{download.mediaTitle}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {download.chapterNumber 
+                            ? `Chapter ${download.chapterNumber}`
+                            : download.episodeNumber
+                            ? `Episode ${download.episodeNumber}`
+                            : 'Full Series'
+                          }
+                          {download.quality && ` • ${download.quality}`}
+                        </p>
                       </div>
-
-                      <div className="flex items-center gap-1">
-                        {getStatusIcon(download.status)}
-                        <Badge variant={
-                          download.status === 'completed' ? 'default' :
-                          download.status === 'failed' || download.status === 'cancelled' ? 'destructive' :
-                          download.status === 'downloading' ? 'secondary' : 'outline'
-                        }>
-                          {download.status}
+                      
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="secondary"
+                          className={`${getStatusColor(download.status)} text-white border-0`}
+                        >
+                          {getStatusIcon(download.status)}
+                          <span className="ml-1 capitalize">{download.status}</span>
                         </Badge>
                       </div>
                     </div>
-
-                    {/* Progress Bar */}
-                    {(download.status === 'downloading' || download.status === 'paused') && (
-                      <div className="mb-4">
-                        <Progress value={download.progress} className="h-2" />
-                        <div className="flex items-center justify-between mt-2 text-sm text-muted-foreground">
-                          <span>
-                            {formatFileSize(download.downloadedSize)} / {formatFileSize(download.fileSize)}
-                          </span>
-                          <div className="flex items-center gap-4">
-                            {download.status === 'downloading' && (
-                              <>
-                                <span>{formatSpeed(download.speed)}</span>
-                                <span>ETA: {download.eta}</span>
-                              </>
-                            )}
-                            <span>{Math.round(download.progress)}%</span>
-                          </div>
-                        </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>{download.progress}% complete</span>
+                        <span>
+                          {formatFileSize(download.downloadedSize)} / {formatFileSize(download.totalSize)}
+                        </span>
                       </div>
-                    )}
-
-                    {/* Completed/Failed Info */}
-                    {download.status === 'completed' && (
-                      <div className="mb-4 text-sm text-muted-foreground">
-                        <div className="flex items-center justify-between">
-                          <span>Size: {formatFileSize(download.fileSize)}</span>
-                          <span>Completed: {new Date(download.completedAt!).toLocaleDateString()}</span>
-                        </div>
-                        <div className="mt-1">
-                          Path: {download.downloadPath}
-                        </div>
-                      </div>
-                    )}
-
-                    {download.status === 'failed' && download.error && (
-                      <div className="mb-4 p-3 bg-red-50 dark:bg-red-950 rounded-lg">
-                        <div className="text-sm text-red-600 dark:text-red-400">
-                          Error: {download.error}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        {download.status === 'downloading' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => controlDownload.mutate({ id: download.id, action: 'pause' })}
-                          >
-                            <Pause className="h-4 w-4" />
-                          </Button>
-                        )}
-
-                        {download.status === 'paused' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => controlDownload.mutate({ id: download.id, action: 'resume' })}
-                          >
-                            <Play className="h-4 w-4" />
-                          </Button>
-                        )}
-
-                        {(download.status === 'failed' || download.status === 'cancelled') && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              // Restart download logic
-                              controlDownload.mutate({ id: download.id, action: 'resume' });
-                            }}
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </Button>
-                        )}
-
-                        {download.status === 'completed' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              // Open folder logic
-                              toast({
-                                title: 'Opening Folder',
-                                description: `Opening ${download.downloadPath}`
-                              });
-                            }}
-                          >
-                            <FolderOpen className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1">
-                        {(download.status === 'downloading' || download.status === 'pending' || download.status === 'paused') && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => controlDownload.mutate({ id: download.id, action: 'cancel' })}
-                          >
-                            Cancel
-                          </Button>
-                        )}
-
+                      <Progress value={download.progress} className="h-2" />
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      {download.status === 'downloading' ? (
                         <Button
-                          variant="outline"
                           size="sm"
-                          onClick={() => {
-                            if (confirm('Are you sure you want to remove this download?')) {
-                              deleteDownload.mutate(download.id);
-                            }
-                          }}
+                          variant="outline"
+                          onClick={() => handlePauseResume(download.id, download.status)}
                         >
-                          <Trash2 className="h-4 w-4 text-red-500" />
+                          <Pause className="w-3 h-3 mr-1" />
+                          Pause
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handlePauseResume(download.id, download.status)}
+                        >
+                          <Play className="w-3 h-3 mr-1" />
+                          Resume
+                        </Button>
+                      )}
+                      
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDelete(download.id)}
+                      >
+                        <Trash2 className="w-3 h-3 mr-1" />
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+
+        {/* Completed Downloads */}
+        <TabsContent value="completed" className="space-y-4">
+          {completedDownloads.length === 0 ? (
+            <Card className="p-8 text-center">
+              <HardDrive className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-medium mb-2">No completed downloads</h3>
+              <p className="text-muted-foreground">
+                Your completed downloads will appear here
+              </p>
+            </Card>
+          ) : (
+            completedDownloads.map((download) => (
+              <Card key={download.id} className="p-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-16 h-20 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
+                    {download.thumbnailUrl ? (
+                      <img
+                        src={download.thumbnailUrl}
+                        alt={download.mediaTitle}
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                    ) : (
+                      <HardDrive className="w-6 h-6 text-muted-foreground" />
+                    )}
+                  </div>
+                  
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-medium">{download.mediaTitle}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {download.chapterNumber 
+                            ? `Chapter ${download.chapterNumber}`
+                            : download.episodeNumber
+                            ? `Episode ${download.episodeNumber}`
+                            : 'Full Series'
+                          }
+                          {download.quality && ` • ${download.quality}`}
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {formatFileSize(download.totalSize)} • Downloaded {new Date(download.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <Badge variant="default" className="bg-green-500">
+                          <Download className="w-3 h-3 mr-1" />
+                          Complete
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDelete(download.id)}
+                        >
+                          <Trash2 className="w-3 h-3" />
                         </Button>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                  </div>
+                </div>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+
+        {/* Error Downloads */}
+        <TabsContent value="errors" className="space-y-4">
+          {errorDownloads.length === 0 ? (
+            <Card className="p-8 text-center">
+              <Download className="w-12 h-12 mx-auto mb-4 text-green-500" />
+              <h3 className="text-lg font-medium mb-2">No download errors</h3>
+              <p className="text-muted-foreground">
+                All your downloads completed successfully!
+              </p>
+            </Card>
+          ) : (
+            errorDownloads.map((download) => (
+              <Card key={download.id} className="p-6 border-red-200 dark:border-red-800">
+                <div className="flex items-start gap-4">
+                  <div className="w-16 h-20 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
+                    {download.thumbnailUrl ? (
+                      <img
+                        src={download.thumbnailUrl}
+                        alt={download.mediaTitle}
+                        className="w-full h-full object-cover rounded-lg opacity-50"
+                      />
+                    ) : (
+                      <Download className="w-6 h-6 text-red-500" />
+                    )}
+                  </div>
+                  
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-medium">{download.mediaTitle}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {download.chapterNumber 
+                            ? `Chapter ${download.chapterNumber}`
+                            : download.episodeNumber
+                            ? `Episode ${download.episodeNumber}`
+                            : 'Full Series'
+                          }
+                        </p>
+                        <p className="text-sm text-red-500 mt-1">
+                          Download failed - network or source error
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <Badge variant="destructive">
+                          Error
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handlePauseResume(download.id, 'pending')}
+                        >
+                          Retry
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDelete(download.id)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))
           )}
         </TabsContent>
       </Tabs>

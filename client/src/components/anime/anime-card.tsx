@@ -1,29 +1,34 @@
 import { useState } from 'react';
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Play, Plus, Star, Calendar, Clock } from 'lucide-react';
-import { useTheme } from '@/hooks/use-theme';
+import { Play, Plus, Star, Calendar } from 'lucide-react';
 
 interface AnimeCardProps {
   id: string;
   title: string;
+  alternativeTitles?: string[];
+  description?: string;
   coverUrl: string;
   bannerUrl?: string;
-  description?: string;
-  genres: string[];
-  year: number;
+  genres?: string[];
+  tags?: string[];
+  year?: number;
   season?: string;
   studio?: string;
-  episodes: number;
+  status?: 'ongoing' | 'completed' | 'upcoming' | 'watching' | 'plan_to_watch';
+  format?: 'TV' | 'Movie' | 'OVA' | 'Special';
+  episodes?: number;
   rating?: number;
-  status: 'ongoing' | 'completed' | 'upcoming';
-  format: 'TV' | 'Movie' | 'OVA' | 'Special';
-  progress?: number; // episodes watched
+  isAdult?: boolean;
+  source?: string;
+  progress?: number;
+  totalEpisodes?: number;
+  currentEpisode?: number;
   colorPalette?: any;
-  onWatch?: () => void;
   onAddToLibrary?: () => void;
+  onPlay?: () => void;
 }
 
 export function AnimeCard({
@@ -32,174 +37,214 @@ export function AnimeCard({
   coverUrl,
   bannerUrl,
   description,
-  genres,
+  genres = [],
   year,
   season,
   studio,
-  episodes,
-  rating,
   status,
   format,
+  episodes,
+  rating,
+  isAdult,
   progress = 0,
+  currentEpisode = 0,
+  totalEpisodes,
   colorPalette,
-  onWatch,
   onAddToLibrary,
+  onPlay,
 }: AnimeCardProps) {
-  const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const { applyPalette, resetPalette, dynamicColors } = useTheme();
 
-  const progressPercentage = progress > 0 ? (progress / episodes) * 100 : 0;
-
-  const handleMouseEnter = () => {
-    setIsHovered(true);
-    if (dynamicColors && colorPalette) {
-      applyPalette(colorPalette);
-    }
+  const handleImageError = () => {
+    setImageError(true);
   };
 
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-    if (dynamicColors) {
-      resetPalette();
-    }
-  };
-
-  const formatSeason = (season: string) => {
-    return season.charAt(0).toUpperCase() + season.slice(1);
-  };
-
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status?: string) => {
     switch (status) {
       case 'ongoing':
+      case 'watching':
         return 'bg-green-500';
       case 'completed':
         return 'bg-blue-500';
       case 'upcoming':
-        return 'bg-yellow-500';
+      case 'plan_to_watch':
+        return 'bg-orange-500';
       default:
         return 'bg-gray-500';
     }
   };
 
+  const getStatusText = (status?: string) => {
+    switch (status) {
+      case 'ongoing':
+        return 'Ongoing';
+      case 'completed':
+        return 'Completed';
+      case 'upcoming':
+        return 'Upcoming';
+      case 'watching':
+        return 'Watching';
+      case 'plan_to_watch':
+        return 'Planned';
+      default:
+        return 'Unknown';
+    }
+  };
+
   return (
     <Card
-      className="group relative overflow-hidden transition-all duration-300 hover:scale-105 hover:shadow-xl bg-card/50 backdrop-blur-sm border-0"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      className="group relative overflow-hidden bg-card hover:bg-card/80 transition-all duration-200 cursor-pointer"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Background Banner */}
-      {bannerUrl && (
-        <div
-          className="absolute inset-0 opacity-20 transition-opacity duration-300 group-hover:opacity-30"
-          style={{
-            backgroundImage: `url(${bannerUrl})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-          }}
-        />
-      )}
-
       {/* Cover Image */}
       <div className="relative aspect-[3/4] overflow-hidden">
-        <img
-          src={coverUrl}
-          alt={title}
-          className={`w-full h-full object-cover transition-all duration-500 ${
-            imageLoaded ? 'opacity-100 scale-100' : 'opacity-0 scale-110'
-          } group-hover:scale-110`}
-          onLoad={() => setImageLoaded(true)}
-        />
+        {!imageError && coverUrl ? (
+          <img
+            src={coverUrl}
+            alt={title}
+            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+            onError={handleImageError}
+          />
+        ) : (
+          <div className="w-full h-full bg-muted flex items-center justify-center">
+            <Play className="w-12 h-12 text-muted-foreground" />
+          </div>
+        )}
 
-        {/* Overlay Controls */}
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-all duration-300 flex items-center justify-center">
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex gap-2">
-            {onWatch && (
-              <Button size="sm" variant="default" onClick={onWatch}>
+        {/* NSFW Blur */}
+        {isAdult && (
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
+            <Badge variant="destructive">18+</Badge>
+          </div>
+        )}
+
+        {/* Hover Overlay */}
+        {isHovered && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center space-x-2">
+            {onPlay && (
+              <Button
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPlay();
+                }}
+                className="bg-primary hover:bg-primary/90"
+              >
                 <Play className="w-4 h-4 mr-1" />
                 Watch
               </Button>
             )}
             {onAddToLibrary && (
-              <Button size="sm" variant="secondary" onClick={onAddToLibrary}>
-                <Plus className="w-4 h-4" />
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddToLibrary();
+                }}
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Add
               </Button>
             )}
           </div>
-        </div>
+        )}
 
         {/* Status Badge */}
-        <div className="absolute top-2 right-2">
-          <Badge variant="secondary" className={`${getStatusColor(status)} text-white border-0`}>
-            {status}
-          </Badge>
-        </div>
+        {status && (
+          <div className="absolute top-2 left-2">
+            <Badge
+              variant="secondary"
+              className={`${getStatusColor(status)} text-white border-0`}
+            >
+              {getStatusText(status)}
+            </Badge>
+          </div>
+        )}
 
         {/* Rating */}
-        {rating && (
-          <div className="absolute top-2 left-2 flex items-center gap-1 bg-black/70 rounded-full px-2 py-1 text-xs text-white">
-            <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-            {rating.toFixed(1)}
+        {rating && rating > 0 && (
+          <div className="absolute top-2 right-2">
+            <Badge variant="secondary" className="bg-black/50 text-white border-0">
+              <Star className="w-3 h-3 mr-1 fill-current" />
+              {rating.toFixed(1)}
+            </Badge>
+          </div>
+        )}
+
+        {/* Progress Bar */}
+        {progress > 0 && (
+          <div className="absolute bottom-0 left-0 right-0">
+            <Progress value={progress} className="h-1 rounded-none" />
           </div>
         )}
       </div>
 
-      <CardHeader className="p-3 space-y-2">
-        <h3 className="font-semibold text-sm leading-tight line-clamp-2 group-hover:text-primary transition-colors">
-          {title}
-        </h3>
+      {/* Content */}
+      <div className="p-3 space-y-2">
+        <div>
+          <h3 className="font-medium text-sm line-clamp-2 leading-tight">
+            {title}
+          </h3>
+          
+          {/* Metadata */}
+          <div className="flex items-center space-x-2 mt-1">
+            {year && (
+              <div className="flex items-center text-xs text-muted-foreground">
+                <Calendar className="w-3 h-3 mr-1" />
+                {year}
+              </div>
+            )}
+            {format && (
+              <Badge variant="outline" className="text-xs h-4 px-1">
+                {format}
+              </Badge>
+            )}
+          </div>
 
-        {/* Metadata */}
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {season && year && (
-            <div className="flex items-center gap-1">
-              <Calendar className="w-3 h-3" />
-              {formatSeason(season)} {year}
-            </div>
-          )}
-          {episodes && (
-            <div className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {episodes} eps
+          {/* Episode Progress */}
+          {(currentEpisode > 0 || totalEpisodes) && (
+            <div className="text-xs text-muted-foreground mt-1">
+              {currentEpisode > 0 && totalEpisodes
+                ? `Episode ${currentEpisode}/${totalEpisodes}`
+                : totalEpisodes
+                ? `${totalEpisodes} episodes`
+                : episodes
+                ? `${episodes} episodes`
+                : ''}
             </div>
           )}
         </div>
+
+        {/* Genres */}
+        {genres.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {genres.slice(0, 2).map((genre) => (
+              <Badge
+                key={genre}
+                variant="outline"
+                className="text-xs h-4 px-1"
+              >
+                {genre}
+              </Badge>
+            ))}
+            {genres.length > 2 && (
+              <Badge variant="outline" className="text-xs h-4 px-1">
+                +{genres.length - 2}
+              </Badge>
+            )}
+          </div>
+        )}
 
         {/* Studio */}
         {studio && (
-          <p className="text-xs text-muted-foreground truncate">{studio}</p>
-        )}
-
-        {/* Genres */}
-        <div className="flex flex-wrap gap-1">
-          {genres.slice(0, 3).map((genre) => (
-            <Badge key={genre} variant="outline" className="text-xs px-1 py-0">
-              {genre}
-            </Badge>
-          ))}
-          {genres.length > 3 && (
-            <Badge variant="outline" className="text-xs px-1 py-0">
-              +{genres.length - 3}
-            </Badge>
-          )}
-        </div>
-      </CardHeader>
-
-      {/* Progress */}
-      {progress > 0 && (
-        <CardFooter className="p-3 pt-0">
-          <div className="w-full space-y-1">
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Progress</span>
-              <span>{progress}/{episodes}</span>
-            </div>
-            <Progress value={progressPercentage} className="h-1" />
+          <div className="text-xs text-muted-foreground">
+            {studio}
           </div>
-        </CardFooter>
-      )}
-
-      {/* Animated Border */}
-      <div className="absolute inset-0 rounded-lg border-2 border-transparent group-hover:border-primary/50 transition-all duration-300 pointer-events-none" />
+        )}
+      </div>
     </Card>
   );
 }

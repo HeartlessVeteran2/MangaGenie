@@ -1,14 +1,20 @@
-import { useState, useEffect } from "react";
-import { useParams, useLocation } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { apiRequest } from "@/lib/queryClient";
-import { useOCR } from "@/hooks/use-ocr";
-import { useTranslation } from "@/hooks/use-translation";
-import TranslationOverlay from "@/components/manga/translation-overlay";
-import LanguageModal from "@/components/modals/language-modal";
-import OCRSettingsModal from "@/components/modals/ocr-settings-modal";
+import { useState, useEffect } from 'react';
+import { useParams } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import MangaReader from '@/components/manga/manga-reader';
+import TranslationOverlay from '@/components/manga/translation-overlay';
+import { ChevronLeft, Settings, Eye, Languages } from 'lucide-react';
+
+interface Chapter {
+  id: string;
+  chapterNumber: number;
+  title?: string;
+  totalPages: number;
+  currentPage: number;
+  readAt?: string;
+}
 
 interface Page {
   id: string;
@@ -18,261 +24,300 @@ interface Page {
   translations?: any[];
 }
 
-interface Chapter {
-  id: string;
-  title: string;
-  totalPages: number;
-  currentPage: number;
-}
+export default function ReaderPage() {
+  const { mangaId, chapterId } = useParams();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showSettings, setShowSettings] = useState(false);
+  const [translationMode, setTranslationMode] = useState(true);
+  const [ocrBoundariesVisible, setOcrBoundariesVisible] = useState(false);
 
-interface Manga {
-  id: string;
-  title: string;
-  currentChapter: number;
-}
-
-export default function Reader() {
-  const params = useParams();
-  const [, setLocation] = useLocation();
-  const queryClient = useQueryClient();
-  const mangaId = params.mangaId as string;
-  const chapterId = params.chapterId as string;
-  
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [showLanguageModal, setShowLanguageModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [ocrEnabled, setOcrEnabled] = useState(false);
-  const [translationEnabled, setTranslationEnabled] = useState(true);
-
-  const { data: manga } = useQuery<Manga>({
-    queryKey: ['/api/manga', mangaId],
+  // Fetch chapter info
+  const { data: chapter, isLoading: chapterLoading } = useQuery<Chapter>({
+    queryKey: [`/api/chapters/${chapterId}`],
+    enabled: !!chapterId,
   });
 
-  const { data: pages = [] } = useQuery<Page[]>({
-    queryKey: ['/api/chapters', chapterId, 'pages'],
+  // Fetch pages
+  const { data: pages = [], isLoading: pagesLoading } = useQuery<Page[]>({
+    queryKey: [`/api/chapters/${chapterId}/pages`],
+    enabled: !!chapterId,
   });
 
+  // Get current page data
+  const currentPageData = pages.find(p => p.pageNumber === currentPage);
+
+  // Fetch settings for OCR preferences
   const { data: settings } = useQuery({
     queryKey: ['/api/settings'],
   });
 
-  const { processOCR, isProcessing: isOCRProcessing } = useOCR();
-  const { translatePage, isTranslating } = useTranslation();
+  useEffect(() => {
+    if (chapter && currentPage <= chapter.totalPages) {
+      // Update reading progress
+      const updateProgress = async () => {
+        try {
+          await fetch(`/api/chapters/${chapterId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-user-id': 'demo-user',
+            },
+            body: JSON.stringify({
+              currentPage,
+              readAt: new Date().toISOString(),
+            }),
+          });
+        } catch (error) {
+          console.error('Failed to update reading progress:', error);
+        }
+      };
 
-  const currentPage = pages[currentPageIndex];
-  const progress = pages.length > 0 ? ((currentPageIndex + 1) / pages.length) * 100 : 0;
+      updateProgress();
+    }
+  }, [currentPage, chapterId, chapter]);
 
-  const updatePageMutation = useMutation({
-    mutationFn: (data: { pageId: string; updates: any }) =>
-      apiRequest('PUT', `/api/pages/${data.pageId}`, data.updates),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/chapters', chapterId, 'pages'] });
-    },
-  });
-
-  const handleOCRToggle = async () => {
-    if (!currentPage) return;
-
-    setOcrEnabled(!ocrEnabled);
-    
-    if (!ocrEnabled && !currentPage.ocrData) {
-      await processOCR(currentPage.id, settings?.defaultLanguagePair?.split('-')[0] || 'jpn');
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && chapter && newPage <= chapter.totalPages) {
+      setCurrentPage(newPage);
     }
   };
 
-  const handleTranslationToggle = async () => {
-    if (!currentPage) return;
+  const processOCR = async () => {
+    if (!currentPageData) return;
 
-    setTranslationEnabled(!translationEnabled);
-    
-    if (!translationEnabled && currentPage.ocrData && !currentPage.translations) {
-      const [source, target] = (settings?.defaultLanguagePair || 'jp-en').split('-');
-      await translatePage(
-        currentPage.id, 
-        source === 'jp' ? 'Japanese' : source === 'kr' ? 'Korean' : 'Chinese',
-        'English',
-        settings?.translationQuality || 'balanced'
-      );
+    try {
+      const response = await fetch(`/api/pages/${currentPageData.id}/ocr`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': 'demo-user',
+        },
+        body: JSON.stringify({
+          language: settings?.defaultLanguagePair?.split('-')[0] === 'jp' ? 'jpn+eng' : 'eng',
+        }),
+      });
+
+      if (response.ok) {
+        // Refetch pages to get updated OCR data
+        // queryClient.invalidateQueries([`/api/chapters/${chapterId}/pages`]);
+      }
+    } catch (error) {
+      console.error('OCR processing failed:', error);
     }
   };
 
-  const navigatePage = (direction: 'prev' | 'next') => {
-    if (direction === 'prev' && currentPageIndex > 0) {
-      setCurrentPageIndex(currentPageIndex - 1);
-    } else if (direction === 'next' && currentPageIndex < pages.length - 1) {
-      setCurrentPageIndex(currentPageIndex + 1);
+  const processTranslation = async () => {
+    if (!currentPageData || !currentPageData.ocrData) return;
+
+    try {
+      const [sourceLang, targetLang] = settings?.defaultLanguagePair?.split('-') || ['jp', 'en'];
+      
+      const response = await fetch(`/api/pages/${currentPageData.id}/translate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': 'demo-user',
+        },
+        body: JSON.stringify({
+          sourceLanguage: sourceLang,
+          targetLanguage: targetLang,
+          quality: settings?.translationQuality || 'balanced',
+        }),
+      });
+
+      if (response.ok) {
+        // Refetch pages to get updated translation data
+        // queryClient.invalidateQueries([`/api/chapters/${chapterId}/pages`]);
+      }
+    } catch (error) {
+      console.error('Translation failed:', error);
     }
   };
 
-  const exitReader = () => {
-    setLocation('/');
-  };
+  // Auto-process if settings allow
+  useEffect(() => {
+    if (currentPageData && settings?.autoTranslate && !currentPageData.ocrData) {
+      processOCR();
+    }
+    if (currentPageData?.ocrData && settings?.autoTranslate && !currentPageData.translations) {
+      processTranslation();
+    }
+  }, [currentPageData, settings]);
 
-  if (!manga || !currentPage) {
+  if (chapterLoading || pagesLoading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-slate-400">Loading manga...</p>
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="text-white">Loading chapter...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!chapter || !currentPageData) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <h3 className="text-xl font-medium text-white">Chapter not found</h3>
+          <p className="text-gray-400">This chapter might not exist or failed to load.</p>
+          <Button onClick={() => window.history.back()}>
+            Go Back
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black relative">
-      {/* Reader Header */}
-      <div className="absolute top-0 left-0 right-0 bg-surface/95 backdrop-blur-sm border-b border-slate-700 px-4 py-3 flex items-center justify-between z-40">
-        <Button variant="ghost" size="sm" onClick={exitReader}>
-          <i className="fas fa-arrow-left"></i>
-        </Button>
-        <div className="text-center">
-          <h3 className="font-medium">{manga.title}</h3>
-          <p className="text-sm text-slate-400">Chapter {manga.currentChapter}</p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => setShowSettingsModal(true)}>
-          <i className="fas fa-cog"></i>
-        </Button>
-      </div>
-
-      {/* Main Reading Area */}
-      <div className="pt-16 pb-24">
-        <div className="relative">
-          <img 
-            src={currentPage.imageUrl} 
-            alt={`Page ${currentPage.pageNumber}`}
-            className="w-full h-auto block mx-auto max-h-screen object-contain"
-          />
-          
-          {/* Translation Overlays */}
-          {translationEnabled && currentPage.translations && (
-            <>
-              {currentPage.translations.map((translation: any, index: number) => (
-                <TranslationOverlay
-                  key={index}
-                  translation={translation}
-                  position={{
-                    x: translation.bbox?.x0 || 0,
-                    y: translation.bbox?.y0 || 0,
-                    width: (translation.bbox?.x1 || 0) - (translation.bbox?.x0 || 0),
-                    height: (translation.bbox?.y1 || 0) - (translation.bbox?.y0 || 0),
-                  }}
-                />
-              ))}
-            </>
-          )}
-
-          {/* OCR Detection Zones */}
-          {ocrEnabled && currentPage.ocrData && settings?.showOcrBoundaries && (
-            <div className="absolute inset-0 pointer-events-none">
-              {currentPage.ocrData.map((ocr: any, index: number) => (
-                <div
-                  key={index}
-                  className="absolute border-2 border-primary animate-pulse"
-                  style={{
-                    left: `${(ocr.bbox?.x0 / 800) * 100}%`,
-                    top: `${(ocr.bbox?.y0 / 1200) * 100}%`,
-                    width: `${((ocr.bbox?.x1 - ocr.bbox?.x0) / 800) * 100}%`,
-                    height: `${((ocr.bbox?.y1 - ocr.bbox?.y0) / 1200) * 100}%`,
-                  }}
-                />
-              ))}
+    <div className="min-h-screen bg-black text-white relative">
+      {/* Header */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-sm border-b border-gray-800">
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.history.back()}
+              className="text-white hover:bg-white/10"
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-lg font-medium">
+                {chapter.title || `Chapter ${chapter.chapterNumber}`}
+              </h1>
+              <p className="text-sm text-gray-400">
+                Page {currentPage} of {chapter.totalPages}
+              </p>
             </div>
-          )}
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setOcrBoundariesVisible(!ocrBoundariesVisible)}
+              className={`text-white hover:bg-white/10 ${ocrBoundariesVisible ? 'bg-white/20' : ''}`}
+            >
+              <Eye className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTranslationMode(!translationMode)}
+              className={`text-white hover:bg-white/10 ${translationMode ? 'bg-white/20' : ''}`}
+            >
+              <Languages className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSettings(!showSettings)}
+              className="text-white hover:bg-white/10"
+            >
+              <Settings className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Reading Controls */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-bgDark via-bgDark/95 to-transparent p-4">
-        <div className="flex items-center justify-between bg-surface/95 backdrop-blur-sm rounded-2xl px-6 py-4 max-w-2xl mx-auto">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigatePage('prev')}
-            disabled={currentPageIndex === 0}
-          >
-            <i className="fas fa-chevron-left"></i>
-          </Button>
+      {/* Main Reader */}
+      <div className="pt-20">
+        <MangaReader
+          imageUrl={currentPageData.imageUrl}
+          currentPage={currentPage}
+          totalPages={chapter.totalPages}
+          onPageChange={handlePageChange}
+          className="min-h-screen"
+        />
 
-          <div className="text-center flex-1 mx-4">
-            <p className="text-sm font-medium mb-2">
-              Page {currentPageIndex + 1} of {pages.length}
-            </p>
-            <Progress value={progress} className="h-1" />
-          </div>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigatePage('next')}
-            disabled={currentPageIndex === pages.length - 1}
-          >
-            <i className="fas fa-chevron-right"></i>
-          </Button>
-        </div>
+        {/* Translation Overlay */}
+        {translationMode && currentPageData.translations && (
+          <TranslationOverlay
+            translations={currentPageData.translations}
+            showBoundaries={ocrBoundariesVisible || settings?.showOcrBoundaries}
+          />
+        )}
       </div>
 
-      {/* Floating AI Controls */}
-      <div className="absolute top-20 right-4 space-y-3 z-30">
-        <Button
-          size="sm"
-          className={`w-14 h-14 rounded-full shadow-lg ${
-            ocrEnabled ? 'bg-primary' : 'bg-slate-700'
-          } hover:scale-105 transition-all`}
-          onClick={handleOCRToggle}
-          disabled={isOCRProcessing}
-        >
-          {isOCRProcessing ? (
-            <i className="fas fa-spinner fa-spin text-white text-lg"></i>
-          ) : (
-            <i className="fas fa-eye text-white text-lg"></i>
-          )}
-        </Button>
-        
-        <Button
-          size="sm"
-          className={`w-14 h-14 rounded-full shadow-lg ${
-            translationEnabled ? 'bg-secondary' : 'bg-slate-700'
-          } hover:scale-105 transition-all`}
-          onClick={handleTranslationToggle}
-          disabled={isTranslating}
-        >
-          {isTranslating ? (
-            <i className="fas fa-spinner fa-spin text-white text-lg"></i>
-          ) : (
-            <i className="fas fa-language text-white text-lg"></i>
-          )}
-        </Button>
-        
-        <Button
-          size="sm"
-          className="w-14 h-14 bg-slate-700 hover:bg-slate-600 rounded-full shadow-lg hover:scale-105 transition-all"
-        >
-          <i className="fas fa-bookmark text-white text-lg"></i>
-        </Button>
-      </div>
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="fixed right-4 top-24 z-50">
+          <Card className="p-4 bg-gray-900 border-gray-700 min-w-[300px]">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium">Reader Settings</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSettings(false)}
+                >
+                  ×
+                </Button>
+              </div>
 
-      {/* AI Processing Indicator */}
-      {(isOCRProcessing || isTranslating) && (
-        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-surface/95 backdrop-blur-sm rounded-full px-4 py-2 z-50">
-          <div className="flex items-center space-x-3">
-            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-sm font-medium">
-              {isOCRProcessing ? 'Processing OCR...' : 'Translating...'}
-            </span>
-          </div>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-sm">OCR Detection</span>
+                  <Button
+                    size="sm"
+                    variant={currentPageData.ocrData ? "secondary" : "default"}
+                    onClick={processOCR}
+                    disabled={!!currentPageData.ocrData}
+                  >
+                    {currentPageData.ocrData ? 'Detected' : 'Detect Text'}
+                  </Button>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-sm">Translation</span>
+                  <Button
+                    size="sm"
+                    variant={currentPageData.translations ? "secondary" : "default"}
+                    onClick={processTranslation}
+                    disabled={!currentPageData.ocrData || !!currentPageData.translations}
+                  >
+                    {currentPageData.translations ? 'Translated' : 'Translate'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Card>
         </div>
       )}
 
-      <LanguageModal 
-        open={showLanguageModal}
-        onOpenChange={setShowLanguageModal}
-      />
-      
-      <OCRSettingsModal
-        open={showSettingsModal}
-        onOpenChange={setShowSettingsModal}
-      />
+      {/* Page Navigation */}
+      <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50">
+        <Card className="p-2 bg-gray-900/90 backdrop-blur border-gray-700">
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="text-white hover:bg-white/10"
+            >
+              Previous
+            </Button>
+            
+            <div className="px-3 py-1 bg-gray-800 rounded text-sm">
+              {currentPage} / {chapter.totalPages}
+            </div>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= chapter.totalPages}
+              className="text-white hover:bg-white/10"
+            >
+              Next
+            </Button>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

@@ -1,484 +1,261 @@
-import { useState, useEffect, useCallback } from "react";
-import { useParams, useLocation } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Card } from "@/components/ui/card";
-import { apiRequest } from "@/lib/queryClient";
-import { useOCR } from "@/hooks/use-ocr";
-import { useTranslation } from "@/hooks/use-translation";
-import { useToast } from "@/hooks/use-toast";
-import TranslationOverlay from "./translation-overlay";
-import LanguageModal from "@/components/modals/language-modal";
-import OCRSettingsModal from "@/components/modals/ocr-settings-modal";
-
-interface Page {
-  id: string;
-  pageNumber: number;
-  imageUrl: string;
-  ocrData?: Array<{
-    text: string;
-    confidence: number;
-    bbox: {
-      x0: number;
-      y0: number;
-      x1: number;
-      y1: number;
-    };
-  }>;
-  translations?: Array<{
-    text: string;
-    translatedText: string;
-    confidence: number;
-    context?: string;
-    bbox: {
-      x0: number;
-      y0: number;
-      x1: number;
-      y1: number;
-    };
-  }>;
-}
-
-interface Chapter {
-  id: string;
-  title: string;
-  totalPages: number;
-  currentPage: number;
-  chapterNumber: number;
-}
-
-interface Manga {
-  id: string;
-  title: string;
-  currentChapter: number;
-  status: string;
-  progress: number;
-}
+import { useState, useRef, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 interface MangaReaderProps {
-  mangaId?: string;
-  chapterId?: string;
-  initialPage?: number;
+  imageUrl: string;
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+  className?: string;
 }
 
-export default function MangaReader({ 
-  mangaId: propMangaId, 
-  chapterId: propChapterId, 
-  initialPage = 0 
+export default function MangaReader({
+  imageUrl,
+  currentPage,
+  totalPages,
+  onPageChange,
+  className,
 }: MangaReaderProps) {
-  const params = useParams();
-  const [, setLocation] = useLocation();
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  
-  // Use props if provided, otherwise get from URL params
-  const mangaId = propMangaId || (params.mangaId as string);
-  const chapterId = propChapterId || (params.chapterId as string);
-  
-  const [currentPageIndex, setCurrentPageIndex] = useState(initialPage);
-  const [showLanguageModal, setShowLanguageModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [ocrEnabled, setOcrEnabled] = useState(false);
-  const [translationEnabled, setTranslationEnabled] = useState(true);
-  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const imageRef = useRef<HTMLImageElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  const { processOCR, isProcessing: isOCRProcessing } = useOCR();
-  const { translatePage, isTranslating } = useTranslation();
+  const handleZoomIn = () => {
+    setZoom(prev => Math.min(prev * 1.2, 5));
+  };
 
-  // Fetch manga data
-  const { data: manga, isLoading: mangaLoading } = useQuery<Manga>({
-    queryKey: ['/api/manga', mangaId],
-    enabled: !!mangaId,
-  });
+  const handleZoomOut = () => {
+    setZoom(prev => Math.max(prev / 1.2, 0.5));
+  };
 
-  // Fetch chapter data
-  const { data: chapter, isLoading: chapterLoading } = useQuery<Chapter>({
-    queryKey: ['/api/chapters', chapterId],
-    enabled: !!chapterId,
-  });
+  const handleResetZoom = () => {
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+  };
 
-  // Fetch pages
-  const { data: pages = [], isLoading: pagesLoading } = useQuery<Page[]>({
-    queryKey: ['/api/chapters', chapterId, 'pages'],
-    enabled: !!chapterId,
-  });
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoom > 1) {
+      setIsDragging(true);
+      setDragStart({
+        x: e.clientX - position.x,
+        y: e.clientY - position.y,
+      });
+    }
+  };
 
-  // Fetch user settings
-  const { data: settings } = useQuery({
-    queryKey: ['/api/settings'],
-  });
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && zoom > 1) {
+      setPosition({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y,
+      });
+    }
+  };
 
-  const currentPage = pages[currentPageIndex];
-  const progress = pages.length > 0 ? ((currentPageIndex + 1) / pages.length) * 100 : 0;
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
 
-  // Update manga progress mutation
-  const updateProgressMutation = useMutation({
-    mutationFn: (data: { mangaId: string; progress: number; currentPage: number }) =>
-      apiRequest('PUT', `/api/manga/${data.mangaId}`, {
-        progress: data.progress,
-        currentChapter: chapter?.chapterNumber || 1,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/manga'] });
-    },
-  });
+  const handleImageError = () => {
+    setImageError(true);
+    setImageLoaded(false);
+  };
 
-  // Update progress when page changes
+  const handleImageLoad = () => {
+    setImageError(false);
+    setImageLoaded(true);
+  };
+
+  // Reset zoom and position when page changes
   useEffect(() => {
-    if (manga && pages.length > 0 && currentPageIndex >= 0) {
-      const newProgress = Math.round(((currentPageIndex + 1) / pages.length) * 100);
-      if (newProgress !== manga.progress) {
-        updateProgressMutation.mutate({
-          mangaId: manga.id,
-          progress: newProgress,
-          currentPage: currentPageIndex + 1,
-        });
-      }
-    }
-  }, [currentPageIndex, manga, pages.length, updateProgressMutation]);
+    setZoom(1);
+    setPosition({ x: 0, y: 0 });
+    setImageError(false);
+    setImageLoaded(false);
+  }, [imageUrl]);
 
-  // Handle OCR toggle
-  const handleOCRToggle = useCallback(async () => {
-    if (!currentPage) return;
-
-    const newOcrEnabled = !ocrEnabled;
-    setOcrEnabled(newOcrEnabled);
-    
-    if (newOcrEnabled && !currentPage.ocrData) {
-      try {
-        const sourceLanguage = settings?.defaultLanguagePair?.split('-')[0] || 'jpn';
-        await processOCR(currentPage.id, sourceLanguage);
-      } catch (error) {
-        setOcrEnabled(false);
-        console.error('OCR failed:', error);
-      }
-    }
-  }, [currentPage, ocrEnabled, processOCR, settings]);
-
-  // Handle translation toggle
-  const handleTranslationToggle = useCallback(async () => {
-    if (!currentPage) return;
-
-    const newTranslationEnabled = !translationEnabled;
-    setTranslationEnabled(newTranslationEnabled);
-    
-    if (newTranslationEnabled && currentPage.ocrData && !currentPage.translations) {
-      try {
-        const [source, target] = (settings?.defaultLanguagePair || 'jp-en').split('-');
-        const sourceLanguage = source === 'jp' ? 'Japanese' : source === 'kr' ? 'Korean' : 'Chinese';
-        await translatePage(
-          currentPage.id, 
-          sourceLanguage,
-          'English',
-          settings?.translationQuality || 'balanced'
-        );
-      } catch (error) {
-        console.error('Translation failed:', error);
-      }
-    }
-  }, [currentPage, translationEnabled, translatePage, settings]);
-
-  // Navigation functions
-  const navigatePage = useCallback((direction: 'prev' | 'next') => {
-    if (direction === 'prev' && currentPageIndex > 0) {
-      setCurrentPageIndex(currentPageIndex - 1);
-      setImageLoaded(false);
-    } else if (direction === 'next' && currentPageIndex < pages.length - 1) {
-      setCurrentPageIndex(currentPageIndex + 1);
-      setImageLoaded(false);
-    }
-  }, [currentPageIndex, pages.length]);
-
-  // Keyboard navigation
+  // Handle keyboard navigation
   useEffect(() => {
-    const handleKeyPress = (event: KeyboardEvent) => {
-      switch (event.key) {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      switch (e.key) {
         case 'ArrowLeft':
-          navigatePage('prev');
+          e.preventDefault();
+          if (currentPage > 1) {
+            onPageChange(currentPage - 1);
+          }
           break;
         case 'ArrowRight':
-          navigatePage('next');
+          e.preventDefault();
+          if (currentPage < totalPages) {
+            onPageChange(currentPage + 1);
+          }
           break;
-        case 'o':
-          handleOCRToggle();
+        case '+':
+        case '=':
+          e.preventDefault();
+          handleZoomIn();
           break;
-        case 't':
-          handleTranslationToggle();
+        case '-':
+          e.preventDefault();
+          handleZoomOut();
           break;
-        case 'Escape':
-          exitReader();
+        case '0':
+          e.preventDefault();
+          handleResetZoom();
           break;
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [navigatePage, handleOCRToggle, handleTranslationToggle]);
-
-  const exitReader = useCallback(() => {
-    setLocation('/library');
-  }, [setLocation]);
-
-  const toggleBookmark = useCallback(() => {
-    setIsBookmarked(!isBookmarked);
-    toast({
-      title: isBookmarked ? "Bookmark Removed" : "Bookmark Added",
-      description: `Page ${currentPageIndex + 1} ${isBookmarked ? 'removed from' : 'added to'} bookmarks`,
-    });
-  }, [isBookmarked, currentPageIndex, toast]);
-
-  // Auto-translate on OCR completion if enabled
-  useEffect(() => {
-    if (
-      settings?.autoTranslate &&
-      currentPage?.ocrData &&
-      !currentPage.translations &&
-      !isTranslating
-    ) {
-      const [source] = (settings.defaultLanguagePair || 'jp-en').split('-');
-      const sourceLanguage = source === 'jp' ? 'Japanese' : source === 'kr' ? 'Korean' : 'Chinese';
-      translatePage(
-        currentPage.id,
-        sourceLanguage,
-        'English',
-        settings.translationQuality || 'balanced'
-      );
-    }
-  }, [currentPage?.ocrData, settings, translatePage, isTranslating]);
-
-  // Loading state
-  if (mangaLoading || chapterLoading || pagesLoading || !currentPage) {
-    return (
-      <div className="min-h-screen bg-bgDark flex items-center justify-center">
-        <Card className="bg-surface border-slate-700 p-8">
-          <div className="text-center space-y-4">
-            <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <div>
-              <h3 className="text-lg font-medium text-slate-50">Loading Manga</h3>
-              <p className="text-slate-400 text-sm">Preparing your reading experience...</p>
-            </div>
-          </div>
-        </Card>
-      </div>
-    );
-  }
+  }, [currentPage, totalPages, onPageChange]);
 
   return (
-    <div className="min-h-screen bg-black relative overflow-hidden">
-      {/* Reader Header */}
-      <div className="absolute top-0 left-0 right-0 bg-surface/95 backdrop-blur-sm border-b border-slate-700 px-4 py-3 flex items-center justify-between z-40">
-        <Button variant="ghost" size="sm" onClick={exitReader}>
-          <i className="fas fa-arrow-left mr-2"></i>
-          Exit
-        </Button>
-        <div className="text-center">
-          <h3 className="font-medium text-slate-50">{manga?.title}</h3>
-          <p className="text-sm text-slate-400">
-            {chapter?.title || `Chapter ${chapter?.chapterNumber || 1}`}
-          </p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => setShowSettingsModal(true)}>
-          <i className="fas fa-cog"></i>
-        </Button>
-      </div>
-
-      {/* Main Reading Area */}
-      <div className="pt-16 pb-24 min-h-screen flex items-center justify-center">
-        <div className="relative max-w-full max-h-full">
-          {/* Page Image */}
-          <div className="relative">
-            <img 
-              src={currentPage.imageUrl} 
-              alt={`Page ${currentPage.pageNumber}`}
-              className={`max-w-full max-h-[calc(100vh-10rem)] object-contain transition-opacity duration-300 ${
-                imageLoaded ? 'opacity-100' : 'opacity-0'
-              }`}
-              onLoad={() => setImageLoaded(true)}
-              onError={() => {
-                toast({
-                  title: "Image Load Error",
-                  description: "Failed to load page image",
-                  variant: "destructive",
-                });
-              }}
-            />
-            
-            {/* Loading overlay for image */}
-            {!imageLoaded && (
-              <div className="absolute inset-0 flex items-center justify-center bg-surface/20">
-                <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-              </div>
-            )}
-
-            {/* Translation Overlays */}
-            {translationEnabled && currentPage.translations && imageLoaded && (
-              <>
-                {currentPage.translations.map((translation, index) => (
-                  <TranslationOverlay
-                    key={`translation-${index}`}
-                    translation={{
-                      translatedText: translation.translatedText,
-                      confidence: translation.confidence,
-                      context: translation.context,
-                    }}
-                    position={{
-                      x: translation.bbox?.x0 || 0,
-                      y: translation.bbox?.y0 || 0,
-                      width: (translation.bbox?.x1 || 0) - (translation.bbox?.x0 || 0),
-                      height: (translation.bbox?.y1 || 0) - (translation.bbox?.y0 || 0),
-                    }}
-                  />
-                ))}
-              </>
-            )}
-
-            {/* OCR Detection Zones */}
-            {ocrEnabled && currentPage.ocrData && settings?.showOcrBoundaries && imageLoaded && (
-              <div className="absolute inset-0 pointer-events-none">
-                {currentPage.ocrData.map((ocr, index) => (
-                  <div
-                    key={`ocr-${index}`}
-                    className="absolute border-2 border-primary animate-pulse rounded"
-                    style={{
-                      left: `${ocr.bbox?.x0 || 0}px`,
-                      top: `${ocr.bbox?.y0 || 0}px`,
-                      width: `${(ocr.bbox?.x1 || 0) - (ocr.bbox?.x0 || 0)}px`,
-                      height: `${(ocr.bbox?.y1 || 0) - (ocr.bbox?.y0 || 0)}px`,
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Reading Controls */}
-      <div className="absolute bottom-0 left-0 right-0 reader-controls p-4">
-        <div className="flex items-center justify-between bg-surface/95 backdrop-blur-sm rounded-2xl px-6 py-4 max-w-2xl mx-auto">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigatePage('prev')}
-            disabled={currentPageIndex === 0}
-            className="w-12 h-12 rounded-full hover:bg-slate-700 transition-colors"
-          >
-            <i className="fas fa-chevron-left"></i>
-          </Button>
-
-          <div className="text-center flex-1 mx-4">
-            <p className="text-sm font-medium mb-2 text-slate-50">
-              Page {currentPageIndex + 1} of {pages.length}
-            </p>
-            <Progress 
-              value={progress} 
-              className="h-2 bg-slate-700" 
-            />
-          </div>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigatePage('next')}
-            disabled={currentPageIndex === pages.length - 1}
-            className="w-12 h-12 rounded-full hover:bg-slate-700 transition-colors"
-          >
-            <i className="fas fa-chevron-right"></i>
-          </Button>
-        </div>
-      </div>
-
-      {/* Floating AI Controls */}
-      <div className="absolute top-20 right-4 space-y-3 z-30">
-        {/* OCR Toggle */}
-        <Button
-          size="sm"
-          className={`w-14 h-14 rounded-full shadow-lg transition-all transform hover:scale-105 ${
-            ocrEnabled ? 'bg-primary hover:bg-primary/90' : 'bg-slate-700 hover:bg-slate-600'
-          }`}
-          onClick={handleOCRToggle}
-          disabled={isOCRProcessing}
-          title="Toggle OCR Detection (O)"
-        >
-          {isOCRProcessing ? (
-            <i className="fas fa-spinner fa-spin text-white text-lg"></i>
-          ) : (
-            <i className="fas fa-eye text-white text-lg"></i>
-          )}
-        </Button>
-        
-        {/* Translation Toggle */}
-        <Button
-          size="sm"
-          className={`w-14 h-14 rounded-full shadow-lg transition-all transform hover:scale-105 ${
-            translationEnabled ? 'bg-secondary hover:bg-secondary/90' : 'bg-slate-700 hover:bg-slate-600'
-          }`}
-          onClick={handleTranslationToggle}
-          disabled={isTranslating}
-          title="Toggle Translation (T)"
-        >
-          {isTranslating ? (
-            <i className="fas fa-spinner fa-spin text-white text-lg"></i>
-          ) : (
-            <i className="fas fa-language text-white text-lg"></i>
-          )}
-        </Button>
-        
-        {/* Bookmark Toggle */}
-        <Button
-          size="sm"
-          className={`w-14 h-14 rounded-full shadow-lg transition-all transform hover:scale-105 ${
-            isBookmarked ? 'bg-amber-500 hover:bg-amber-400' : 'bg-slate-700 hover:bg-slate-600'
-          }`}
-          onClick={toggleBookmark}
-          title="Toggle Bookmark"
-        >
-          <i className={`fas ${isBookmarked ? 'fa-bookmark' : 'fa-bookmark-o'} text-white text-lg`}></i>
-        </Button>
-
-        {/* Language Settings */}
-        <Button
-          size="sm"
-          className="w-14 h-14 bg-slate-700 hover:bg-slate-600 rounded-full shadow-lg transition-all transform hover:scale-105"
-          onClick={() => setShowLanguageModal(true)}
-          title="Language Settings"
-        >
-          <i className="fas fa-globe text-white text-lg"></i>
-        </Button>
-      </div>
-
-      {/* AI Processing Indicator */}
-      {(isOCRProcessing || isTranslating) && (
-        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-surface/95 backdrop-blur-sm rounded-full px-4 py-2 z-50 ai-processing">
-          <div className="flex items-center space-x-3">
-            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-            <span className="text-sm font-medium text-slate-50">
-              {isOCRProcessing ? 'Processing OCR...' : 'Translating...'}
-            </span>
+    <div
+      ref={containerRef}
+      className={`relative overflow-hidden flex items-center justify-center ${className}`}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+    >
+      {/* Loading State */}
+      {!imageLoaded && !imageError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black">
+          <div className="text-center space-y-4">
+            <div className="w-12 h-12 animate-spin rounded-full border-4 border-white border-t-transparent"></div>
+            <p className="text-white text-sm">Loading page...</p>
           </div>
         </div>
       )}
 
-      {/* Keyboard Shortcuts Help */}
-      <div className="absolute bottom-4 left-4 text-xs text-slate-500 space-y-1">
-        <div>← → Navigate pages</div>
-        <div>O Toggle OCR</div>
-        <div>T Toggle translation</div>
-        <div>ESC Exit reader</div>
+      {/* Error State */}
+      {imageError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black">
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center">
+              <RotateCcw className="w-8 h-8 text-gray-400" />
+            </div>
+            <div>
+              <p className="text-white text-lg font-medium mb-2">Failed to load image</p>
+              <p className="text-gray-400 text-sm">Check your connection or try another page</p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setImageError(false);
+                if (imageRef.current) {
+                  imageRef.current.src = imageUrl;
+                }
+              }}
+            >
+              Retry
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Image */}
+      <img
+        ref={imageRef}
+        src={imageUrl}
+        alt={`Page ${currentPage}`}
+        className={`max-w-full max-h-full object-contain select-none transition-transform duration-200 ${
+          imageLoaded ? 'opacity-100' : 'opacity-0'
+        }`}
+        style={{
+          transform: `scale(${zoom}) translate(${position.x / zoom}px, ${position.y / zoom}px)`,
+          transformOrigin: 'center center',
+        }}
+        onLoad={handleImageLoad}
+        onError={handleImageError}
+        draggable={false}
+      />
+
+      {/* Zoom Controls */}
+      <div className="absolute bottom-20 right-4 flex flex-col gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={handleZoomIn}
+          disabled={zoom >= 5}
+          className="bg-black/50 text-white border-gray-600 hover:bg-black/70"
+        >
+          <ZoomIn className="w-4 h-4" />
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={handleZoomOut}
+          disabled={zoom <= 0.5}
+          className="bg-black/50 text-white border-gray-600 hover:bg-black/70"
+        >
+          <ZoomOut className="w-4 h-4" />
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={handleResetZoom}
+          disabled={zoom === 1 && position.x === 0 && position.y === 0}
+          className="bg-black/50 text-white border-gray-600 hover:bg-black/70"
+        >
+          <RotateCcw className="w-4 h-4" />
+        </Button>
       </div>
 
-      {/* Modals */}
-      <LanguageModal 
-        open={showLanguageModal}
-        onOpenChange={setShowLanguageModal}
+      {/* Page Navigation Gestures */}
+      <div
+        className="absolute left-0 top-0 w-1/4 h-full cursor-pointer"
+        onClick={() => {
+          if (currentPage > 1) {
+            onPageChange(currentPage - 1);
+          }
+        }}
+        style={{ zIndex: zoom > 1 ? -1 : 10 }}
       />
-      
-      <OCRSettingsModal
-        open={showSettingsModal}
-        onOpenChange={setShowSettingsModal}
+      <div
+        className="absolute right-0 top-0 w-1/4 h-full cursor-pointer"
+        onClick={() => {
+          if (currentPage < totalPages) {
+            onPageChange(currentPage + 1);
+          }
+        }}
+        style={{ zIndex: zoom > 1 ? -1 : 10 }}
       />
+
+      {/* Side Navigation Hints */}
+      {zoom <= 1 && (
+        <>
+          {currentPage > 1 && (
+            <div className="absolute left-4 top-1/2 transform -translate-y-1/2 opacity-0 hover:opacity-100 transition-opacity pointer-events-none">
+              <div className="bg-black/50 rounded-full p-2">
+                <ChevronLeft className="w-6 h-6 text-white" />
+              </div>
+            </div>
+          )}
+          {currentPage < totalPages && (
+            <div className="absolute right-4 top-1/2 transform -translate-y-1/2 opacity-0 hover:opacity-100 transition-opacity pointer-events-none">
+              <div className="bg-black/50 rounded-full p-2">
+                <ChevronRight className="w-6 h-6 text-white" />
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Zoom Indicator */}
+      {zoom !== 1 && (
+        <div className="absolute top-20 right-4 bg-black/50 text-white px-3 py-1 rounded text-sm">
+          {Math.round(zoom * 100)}%
+        </div>
+      )}
     </div>
   );
 }
