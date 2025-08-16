@@ -63,6 +63,11 @@ Preferred communication style: Simple, everyday language.
 - **DownloadManager**: Enterprise-grade download system with queue management, progress tracking, storage optimization, and concurrent download controls
 - **AgeVerification**: NSFW content management with age verification, parental controls, content filtering, and compliance with content guidelines
 
+#### Next-Generation Features
+- **SmartRecommendations**: AI-powered personalized suggestions with mood-based filtering, library analysis, and intelligent content discovery beyond basic popularity rankings
+- **CommunityHub**: Integrated chapter discussions, social features, and community engagement with spoiler warnings and threaded conversations
+- **CreatorDiscovery**: Staff & Studio hub functionality for following authors, artists, and studios across their complete works with detailed creator profiles and work collections
+
 #### Enhanced Features Implementation
 - **AI Translation System**: Real-time OCR with confidence scoring, contextual translation using OpenAI GPT-4o, and overlay positioning
 - **Repository Management**: Full compatibility with Aniyomi/Komikku sources, individual source controls, and NSFW filtering
