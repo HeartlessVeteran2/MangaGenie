@@ -1,5 +1,6 @@
 import { 
   type User, 
+  type UpsertUser,
   type Media,
   type Manga, 
   type Episode,
@@ -39,8 +40,9 @@ import {
 import { randomUUID } from "crypto";
 
 export interface IStorage {
-  // User management
+  // User management (required for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
+  upsertUser(user: UpsertUser): Promise<User>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
 
@@ -201,20 +203,49 @@ export class MemStorage implements IStorage {
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    // For Replit Auth, we don't use usernames, so return undefined
+    return undefined;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
     const user: User = { 
-      ...insertUser, 
       id, 
-      createdAt: new Date() 
+      email: insertUser.email || null,
+      firstName: insertUser.firstName || null,
+      lastName: insertUser.lastName || null,
+      profileImageUrl: insertUser.profileImageUrl || null,
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
     this.users.set(id, user);
     return user;
+  }
+
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const existingUser = this.users.get(userData.id!);
+    
+    if (existingUser) {
+      const updatedUser: User = {
+        ...existingUser,
+        ...userData,
+        updatedAt: new Date(),
+      };
+      this.users.set(userData.id!, updatedUser);
+      return updatedUser;
+    } else {
+      const newUser: User = {
+        id: userData.id!,
+        email: userData.email ?? null,
+        firstName: userData.firstName ?? null,
+        lastName: userData.lastName ?? null,
+        profileImageUrl: userData.profileImageUrl ?? null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      this.users.set(userData.id!, newUser);
+      return newUser;
+    }
   }
 
   // Unified Media management

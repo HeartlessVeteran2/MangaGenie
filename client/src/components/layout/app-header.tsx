@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 import LanguageModal from "@/components/modals/language-modal";
 
 export default function AppHeader() {
   const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const { user } = useAuth();
 
   const { data: settings } = useQuery({
     queryKey: ['/api/settings'],
@@ -48,13 +50,27 @@ export default function AppHeader() {
             </div>
             
             {/* Profile */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center"
-            >
-              <i className="fas fa-user text-white text-sm"></i>
-            </Button>
+            <div className="flex items-center space-x-2">
+              {user?.profileImageUrl ? (
+                <img
+                  src={user.profileImageUrl}
+                  alt="Profile"
+                  className="w-8 h-8 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-full flex items-center justify-center">
+                  <i className="fas fa-user text-white text-sm"></i>
+                </div>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => window.location.href = '/api/logout'}
+                className="text-sm text-slate-400 hover:text-white"
+              >
+                Logout
+              </Button>
+            </div>
           </div>
         </div>
       </header>
