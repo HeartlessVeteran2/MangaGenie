@@ -34,28 +34,28 @@ export default function AnimePage() {
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
 
   // Fetch trending anime
-  const { data: trendingAnime, isLoading: trendingLoading } = useQuery({
+  const { data: trendingAnime = [], isLoading: trendingLoading } = useQuery<AnimeInfo[]>({
     queryKey: ['/api/anime/trending'],
   });
 
   // Fetch popular anime
-  const { data: popularAnime, isLoading: popularLoading } = useQuery({
+  const { data: popularAnime = [], isLoading: popularLoading } = useQuery<AnimeInfo[]>({
     queryKey: ['/api/anime/popular'],
   });
 
   // Fetch seasonal anime
-  const { data: seasonalAnime, isLoading: seasonalLoading } = useQuery({
+  const { data: seasonalAnime = [], isLoading: seasonalLoading } = useQuery<AnimeInfo[]>({
     queryKey: ['/api/anime/seasonal'],
   });
 
   // Search anime
-  const { data: searchResults, isLoading: searchLoading } = useQuery({
+  const { data: searchResults = [], isLoading: searchLoading } = useQuery<AnimeInfo[]>({
     queryKey: ['/api/anime/search', searchQuery, selectedGenres, selectedYear, selectedStatus],
     enabled: searchQuery.length > 0,
   });
 
   // Get user's anime library
-  const { data: userAnime, isLoading: libraryLoading } = useQuery({
+  const { data: userAnime = [], isLoading: libraryLoading } = useQuery<AnimeInfo[]>({
     queryKey: ['/api/media', 'anime'],
   });
 

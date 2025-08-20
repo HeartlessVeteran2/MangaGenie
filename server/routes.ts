@@ -23,7 +23,8 @@ import {
   insertGalleryPresetSchema,
   insertPlayerStateSchema,
   insertDownloadSchema,
-  insertCommentSchema
+  insertCommentSchema,
+  type Comment
 } from "@shared/schema";
 import { animeService } from "./services/animeService";
 import { colorExtractionService } from "./services/colorExtractionService";
@@ -678,7 +679,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const { vote } = req.body; // 1 for upvote, -1 for downvote
       
-      const existing = await storage.getSkipMarkerById?.(id);
+      const existing = await storage.getSkipMarkerById(id);
       if (!existing) {
         return res.status(404).json({ error: "Skip marker not found" });
       }
@@ -854,7 +855,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { mediaId, chapterId, episodeId } = req.query;
       
-      let comments = [];
+      let comments: Comment[] = [];
       if (mediaId) {
         comments = await storage.getCommentsByMediaId(mediaId as string);
       } else if (chapterId) {

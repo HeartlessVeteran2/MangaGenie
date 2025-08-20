@@ -51,6 +51,13 @@ export default function ReaderPage() {
     queryKey: ['/api/settings'],
   });
 
+  const userSettings = {
+    defaultLanguagePair: (settings as any)?.defaultLanguagePair || { from: 'Japanese', to: 'English' },
+    translationQuality: (settings as any)?.translationQuality || 'standard',
+    autoTranslate: (settings as any)?.autoTranslate ?? true,
+    showOcrBoundaries: (settings as any)?.showOcrBoundaries ?? false,
+  };
+
   useEffect(() => {
     if (chapter && currentPage <= chapter.totalPages) {
       // Update reading progress
@@ -93,7 +100,7 @@ export default function ReaderPage() {
           'x-user-id': 'demo-user',
         },
         body: JSON.stringify({
-          language: settings?.defaultLanguagePair?.split('-')[0] === 'jp' ? 'jpn+eng' : 'eng',
+          language: userSettings.defaultLanguagePair.from === 'Japanese' ? 'jpn+eng' : 'eng',
         }),
       });
 
@@ -110,8 +117,6 @@ export default function ReaderPage() {
     if (!currentPageData || !currentPageData.ocrData) return;
 
     try {
-      const [sourceLang, targetLang] = settings?.defaultLanguagePair?.split('-') || ['jp', 'en'];
-      
       const response = await fetch(`/api/pages/${currentPageData.id}/translate`, {
         method: 'POST',
         headers: {
@@ -119,9 +124,9 @@ export default function ReaderPage() {
           'x-user-id': 'demo-user',
         },
         body: JSON.stringify({
-          sourceLanguage: sourceLang,
-          targetLanguage: targetLang,
-          quality: settings?.translationQuality || 'balanced',
+          sourceLanguage: userSettings.defaultLanguagePair.from,
+          targetLanguage: userSettings.defaultLanguagePair.to,
+          quality: userSettings.translationQuality,
         }),
       });
 
@@ -136,13 +141,13 @@ export default function ReaderPage() {
 
   // Auto-process if settings allow
   useEffect(() => {
-    if (currentPageData && settings?.autoTranslate && !currentPageData.ocrData) {
+    if (currentPageData && userSettings.autoTranslate && !currentPageData.ocrData) {
       processOCR();
     }
-    if (currentPageData?.ocrData && settings?.autoTranslate && !currentPageData.translations) {
+    if (currentPageData?.ocrData && userSettings.autoTranslate && !currentPageData.translations) {
       processTranslation();
     }
-  }, [currentPageData, settings]);
+  }, [currentPageData, userSettings]);
 
   if (chapterLoading || pagesLoading) {
     return (
@@ -226,20 +231,12 @@ export default function ReaderPage() {
       {/* Main Reader */}
       <div className="pt-20">
         <MangaReader
-          imageUrl={currentPageData.imageUrl}
+          pages={pages}
           currentPage={currentPage}
-          totalPages={chapter.totalPages}
           onPageChange={handlePageChange}
-          className="min-h-screen"
+          translationMode={translationMode}
+          ocrBoundariesVisible={ocrBoundariesVisible || userSettings.showOcrBoundaries}
         />
-
-        {/* Translation Overlay */}
-        {translationMode && currentPageData.translations && (
-          <TranslationOverlay
-            translations={currentPageData.translations}
-            showBoundaries={ocrBoundariesVisible || settings?.showOcrBoundaries}
-          />
-        )}
       </div>
 
       {/* Settings Panel */}

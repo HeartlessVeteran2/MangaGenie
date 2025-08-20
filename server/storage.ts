@@ -108,6 +108,7 @@ export interface IStorage {
 
   // Skip markers (opening/ending detection)
   getSkipMarkersByEpisodeId(episodeId: string): Promise<SkipMarker[]>;
+  getSkipMarkerById(id: string): Promise<SkipMarker | undefined>;
   createSkipMarker(marker: InsertSkipMarker): Promise<SkipMarker>;
   updateSkipMarker(id: string, marker: Partial<SkipMarker>): Promise<SkipMarker | undefined>;
   deleteSkipMarker(id: string): Promise<boolean>;
@@ -601,7 +602,7 @@ export class MemStorage implements IStorage {
   // Repository management implementations
   async getRepositories(type?: 'manga' | 'anime' | 'mixed'): Promise<Repository[]> {
     const allRepos = Array.from(this.repositories.values());
-    return type ? allRepos.filter(r => r.type === type) : allRepos;
+    return type ? allRepos.filter(r => r.sourceType === type) : allRepos;
   }
 
   async getRepositoryById(id: string): Promise<Repository | undefined> {
@@ -612,12 +613,27 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const repository: Repository = {
       ...insertRepo,
-      enabled: insertRepo.enabled ?? true,
-      lastUpdated: new Date(),
-      totalSources: insertRepo.totalSources ?? 0,
+      description: insertRepo.description || null,
+      author: insertRepo.author || null,
+      iconUrl: insertRepo.iconUrl || null,
+      websiteUrl: insertRepo.websiteUrl || null,
+      packageName: insertRepo.packageName || null,
+      className: insertRepo.className || null,
+      lastError: insertRepo.lastError || null,
+      customCode: insertRepo.customCode || null,
+      isEnabled: insertRepo.isEnabled ?? true,
+      isNsfw: insertRepo.isNsfw ?? false,
+      isObsolete: insertRepo.isObsolete ?? false,
+      authRequired: insertRepo.authRequired ?? false,
+      supportsLatest: insertRepo.supportsLatest ?? true,
+      supportsSearch: insertRepo.supportsSearch ?? true,
+      hasCloudflare: insertRepo.hasCloudflare ?? false,
+      language: insertRepo.language || "en",
+      versionCode: insertRepo.versionCode || "1.0.0",
       metadata: insertRepo.metadata || null,
       id,
-      createdAt: new Date()
+      createdAt: new Date(),
+      updatedAt: new Date()
     };
     this.repositories.set(id, repository);
     return repository;
@@ -630,7 +646,7 @@ export class MemStorage implements IStorage {
     const updated = { 
       ...existing, 
       ...updates,
-      lastUpdated: new Date()
+      updatedAt: new Date()
     };
     this.repositories.set(id, updated);
     return updated;
@@ -643,6 +659,10 @@ export class MemStorage implements IStorage {
   // Skip markers implementations
   async getSkipMarkersByEpisodeId(episodeId: string): Promise<SkipMarker[]> {
     return Array.from(this.skipMarkers.values()).filter(sm => sm.episodeId === episodeId);
+  }
+
+  async getSkipMarkerById(id: string): Promise<SkipMarker | undefined> {
+    return this.skipMarkers.get(id);
   }
 
   async createSkipMarker(insertMarker: InsertSkipMarker): Promise<SkipMarker> {

@@ -196,7 +196,7 @@ export default function FileUpload({ onComplete }: FileUploadProps) {
           onClick={() => {
             if (title.trim()) {
               // Trigger file dialog
-              document.querySelector('input[type="file"]')?.click();
+              (document.querySelector('input[type="file"]') as HTMLElement)?.click();
             } else {
               toast({
                 title: "Title Required",
